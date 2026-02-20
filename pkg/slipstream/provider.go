@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
-	"time"
 
 	"github.com/mirkobrombin/go-slipstream/pkg/engine"
 	"github.com/mirkobrombin/go-slipstream/pkg/tx"
@@ -20,9 +19,11 @@ type record = map[string]any
 
 // Provider implements provider.Provider on top of a go-slipstream Engine.
 // Entities are stored as JSON-encoded maps keyed by primary-key value.
+// TODO: switch to fast binary codec (msgpack) for production
 type Provider struct {
-	eng *engine.Engine[record]
-	wm  *wal.Manager
+	eng     *engine.Engine[record]
+	wm      *wal.Manager
+	indices map[string]struct{} // tracks registered secondary index names
 }
 
 var _ provider.Provider = (*Provider)(nil)
@@ -45,7 +46,7 @@ func New(dataDir string, opts ...engine.Option[record]) (*Provider, error) {
 
 	eng := engine.New[record](wm, codec, decoder, opts...)
 
-	return &Provider{eng: eng, wm: wm}, nil
+	return &Provider{eng: eng, wm: wm, indices: make(map[string]struct{})}, nil
 }
 
 // Engine exposes the underlying Engine for advanced usage (adding indices, etc.).
@@ -113,7 +114,7 @@ func (p *Provider) Find(ctx context.Context, meta *model.EntityMeta, pkValue any
 // --- Query ---
 
 func (p *Provider) Execute(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error {
-	return executeQuery(ctx, p.eng, meta, q, dest)
+	return p.executeQuery(ctx, meta, q, dest)
 }
 
 // --- Transactions ---
@@ -178,7 +179,7 @@ func (t *slipTx) Find(ctx context.Context, meta *model.EntityMeta, pkValue any, 
 }
 
 func (t *slipTx) Execute(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error {
-	return executeQuery(ctx, t.eng, meta, q, dest)
+	return executeQueryOnEngine(ctx, t.eng, nil, meta, q, dest)
 }
 
 // --- helpers ---
@@ -259,16 +260,32 @@ func (p *Provider) AddEntityIndex(meta *model.EntityMeta, fieldName string) {
 		}
 		return ""
 	})
+	p.indices[idxName] = struct{}{}
 }
 
-// executeQuery translates the AST to slipstream operations.
-func executeQuery(ctx context.Context, eng *engine.Engine[record], meta *model.EntityMeta, q query.Query, dest any) error {
-	// Try indexed path first for simple equality predicates
-	if pred, ok := q.Where.(query.Predicate); ok && pred.Op == query.OpEq {
+// HasIndex reports whether a secondary index has been registered.
+func (p *Provider) HasIndex(name string) bool {
+	_, ok := p.indices[name]
+	return ok
+}
+
+// executeQuery is the Provider-aware entry point that can check registered indices.
+func (p *Provider) executeQuery(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error {
+	return executeQueryOnEngine(ctx, p.eng, p.indices, meta, q, dest)
+}
+
+// executeQueryOnEngine translates the AST to slipstream operations.
+// indices may be nil (e.g. when called from a transaction), in which
+// case the indexed path is skipped.
+func executeQueryOnEngine(ctx context.Context, eng *engine.Engine[record], indices map[string]struct{}, meta *model.EntityMeta, q query.Query, dest any) error {
+	// Try indexed path only if the index is actually registered
+	if pred, ok := q.Where.(query.Predicate); ok && pred.Op == query.OpEq && indices != nil {
 		idxName := meta.Name + "." + pred.Field
-		result := eng.GetByIndex(ctx, idxName, fmt.Sprintf("%v", pred.Value))
-		if result != nil {
-			return collectResults(result, meta, q, dest)
+		if _, registered := indices[idxName]; registered {
+			result := eng.GetByIndex(ctx, idxName, fmt.Sprintf("%v", pred.Value))
+			if result != nil {
+				return collectResults(result, meta, q, dest)
+			}
 		}
 	}
 
@@ -316,25 +333,41 @@ func scanInto(recs []record, meta *model.EntityMeta, q query.Query, dest any) er
 
 	dv := reflect.ValueOf(dest)
 	if dv.Kind() != reflect.Ptr || dv.Elem().Kind() != reflect.Slice {
-		return fmt.Errorf("dest must be *[]T")
+		return fmt.Errorf("dest must be *[]T or *[]*T")
 	}
 
 	sliceVal := dv.Elem()
 	elemType := sliceVal.Type().Elem()
+	isPtr := elemType.Kind() == reflect.Ptr
 
 	for _, rec := range recs {
-		elem := reflect.New(elemType).Elem()
+		var elem reflect.Value
+		if isPtr {
+			// dest is *[]*User — allocate a new *User
+			elem = reflect.New(elemType.Elem())
+		} else {
+			// dest is *[]User — allocate a new User
+			elem = reflect.New(elemType)
+		}
+
+		target := elem.Elem()
+
 		for _, f := range meta.Fields {
 			rv, ok := rec[f.FieldName]
 			if !ok {
 				continue
 			}
-			fv := elem.FieldByName(f.FieldName)
+			fv := target.FieldByName(f.FieldName)
 			if fv.CanSet() {
 				setField(fv, rv)
 			}
 		}
-		sliceVal = reflect.Append(sliceVal, elem)
+
+		if isPtr {
+			sliceVal = reflect.Append(sliceVal, elem)
+		} else {
+			sliceVal = reflect.Append(sliceVal, target)
+		}
 	}
 
 	dv.Elem().Set(sliceVal)
@@ -492,6 +525,3 @@ func RegisterDefault(dataDir string, opts ...engine.Option[record]) (*Provider, 
 	provider.SetDefault("slipstream")
 	return p, nil
 }
-
-// unused import guard
-var _ time.Duration

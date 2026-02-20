@@ -237,22 +237,35 @@ func scanRow(meta *model.EntityMeta, row *sql.Row, dest any) error {
 func scanRows(meta *model.EntityMeta, rows *sql.Rows, dest any) error {
 	dv := reflect.ValueOf(dest)
 	if dv.Kind() != reflect.Ptr || dv.Elem().Kind() != reflect.Slice {
-		return fmt.Errorf("dest must be *[]T")
+		return fmt.Errorf("dest must be *[]T or *[]*T")
 	}
 
 	sliceVal := dv.Elem()
 	elemType := sliceVal.Type().Elem()
+	isPtr := elemType.Kind() == reflect.Ptr
 
 	for rows.Next() {
-		elem := reflect.New(elemType).Elem()
+		var elem reflect.Value
+		if isPtr {
+			elem = reflect.New(elemType.Elem())
+		} else {
+			elem = reflect.New(elemType)
+		}
+
+		target := elem.Elem()
 		ptrs := make([]any, len(meta.Fields))
 		for i, f := range meta.Fields {
-			ptrs[i] = elem.FieldByName(f.FieldName).Addr().Interface()
+			ptrs[i] = target.FieldByName(f.FieldName).Addr().Interface()
 		}
 		if err := rows.Scan(ptrs...); err != nil {
 			return err
 		}
-		sliceVal = reflect.Append(sliceVal, elem)
+
+		if isPtr {
+			sliceVal = reflect.Append(sliceVal, elem)
+		} else {
+			sliceVal = reflect.Append(sliceVal, target)
+		}
 	}
 
 	dv.Elem().Set(sliceVal)
