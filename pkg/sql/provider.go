@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/mirkobrombin/go-foundation/pkg/resiliency"
 	"github.com/mirkobrombin/go-wormhole/pkg/model"
 	"github.com/mirkobrombin/go-wormhole/pkg/provider"
 	"github.com/mirkobrombin/go-wormhole/pkg/query"
@@ -16,6 +17,7 @@ type Provider struct {
 	db       *sql.DB
 	compiler *Compiler
 	name     string
+	retry    []func(*resiliency.RetryOptions)
 }
 
 var _ provider.Provider = (*Provider)(nil)
@@ -31,6 +33,12 @@ func WithNumberedParams() Option {
 // WithName overrides the provider name (default: "sql").
 func WithName(n string) Option {
 	return func(p *Provider) { p.name = n }
+}
+
+// WithRetry enables automatic retry with exponential backoff for
+// transient database errors (e.g. "driver: bad connection").
+func WithRetry(opts ...func(*resiliency.RetryOptions)) Option {
+	return func(p *Provider) { p.retry = opts }
 }
 
 // New creates a SQL provider. The db connection should already be open.
@@ -64,22 +72,29 @@ func (p *Provider) Insert(ctx context.Context, meta *model.EntityMeta, entity an
 
 	if meta.PrimaryKey != nil && meta.PrimaryKey.AutoIncr {
 		if p.compiler.Numbered {
-			// Postgres: INSERT … RETURNING id
 			c.SQL += fmt.Sprintf(" RETURNING %s", quoteIdent(meta.PrimaryKey.Column))
 			var id any
-			err := p.db.QueryRowContext(ctx, c.SQL, c.Params...).Scan(&id)
+			err := p.retryDo(ctx, func() error {
+				return p.db.QueryRowContext(ctx, c.SQL, c.Params...).Scan(&id)
+			})
 			return id, err
 		}
-		// SQLite / MySQL: use LastInsertId
-		res, err := p.db.ExecContext(ctx, c.SQL, c.Params...)
-		if err != nil {
-			return nil, err
-		}
-		id, err := res.LastInsertId()
-		return id, err
+		var resID int64
+		err := p.retryDo(ctx, func() error {
+			res, err := p.db.ExecContext(ctx, c.SQL, c.Params...)
+			if err != nil {
+				return err
+			}
+			resID, err = res.LastInsertId()
+			return err
+		})
+		return resID, err
 	}
 
-	_, err := p.db.ExecContext(ctx, c.SQL, c.Params...)
+	err := p.retryDo(ctx, func() error {
+		_, err := p.db.ExecContext(ctx, c.SQL, c.Params...)
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -93,32 +108,40 @@ func (p *Provider) Update(ctx context.Context, meta *model.EntityMeta, entity an
 	if c.SQL == "" {
 		return nil
 	}
-	_, err := p.db.ExecContext(ctx, c.SQL, c.Params...)
-	return err
+	return p.retryDo(ctx, func() error {
+		_, err := p.db.ExecContext(ctx, c.SQL, c.Params...)
+		return err
+	})
 }
 
 func (p *Provider) Delete(ctx context.Context, meta *model.EntityMeta, pkValue any) error {
 	c := p.compiler.Delete(meta, pkValue)
-	_, err := p.db.ExecContext(ctx, c.SQL, c.Params...)
-	return err
+	return p.retryDo(ctx, func() error {
+		_, err := p.db.ExecContext(ctx, c.SQL, c.Params...)
+		return err
+	})
 }
 
 func (p *Provider) Find(ctx context.Context, meta *model.EntityMeta, pkValue any, dest any) error {
 	c := p.compiler.FindByPK(meta, pkValue)
-	row := p.db.QueryRowContext(ctx, c.SQL, c.Params...)
-	return scanRow(meta, row, dest)
+	return p.retryDo(ctx, func() error {
+		row := p.db.QueryRowContext(ctx, c.SQL, c.Params...)
+		return scanRow(meta, row, dest)
+	})
 }
 
 // --- Query ---
 
 func (p *Provider) Execute(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error {
 	c := p.compiler.Select(meta, q)
-	rows, err := p.db.QueryContext(ctx, c.SQL, c.Params...)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	return scanRows(meta, rows, dest)
+	return p.retryDo(ctx, func() error {
+		rows, err := p.db.QueryContext(ctx, c.SQL, c.Params...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		return scanRows(meta, rows, dest)
+	})
 }
 
 // --- Transactions ---
@@ -299,4 +322,12 @@ func RegisterDefault(db *sql.DB, opts ...Option) *Provider {
 	provider.Register(p.name, p)
 	provider.SetDefault(p.name)
 	return p
+}
+
+// retryDo wraps fn with the provider-level retry policy if configured.
+func (p *Provider) retryDo(ctx context.Context, fn func() error) error {
+	if len(p.retry) > 0 {
+		return resiliency.Retry(ctx, fn, p.retry...)
+	}
+	return fn()
 }
