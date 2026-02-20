@@ -90,6 +90,16 @@ func cmdMigrationsAdd() {
 		return
 	}
 
+	// Warn about destructive operations
+	for _, op := range ops {
+		switch o := op.(type) {
+		case migrations.DropTableOp:
+			fmt.Fprintf(os.Stderr, "\033[33mWARNING: This migration drops table %q — potential data loss!\033[0m\n", o.Table)
+		case migrations.DropColumnOp:
+			fmt.Fprintf(os.Stderr, "\033[33mWARNING: This migration drops column %q.%q — potential data loss!\033[0m\n", o.Table, o.Column)
+		}
+	}
+
 	// Generate file
 	source := migrations.GenerateMigrationFile(name, ops)
 	fileName := migrations.MigrationFileName(name)
