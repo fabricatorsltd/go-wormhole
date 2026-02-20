@@ -14,8 +14,16 @@ type User struct {
 	Age   int    `db:"nullable"`
 }
 
+// Score has no db tag — must still be resolvable (Issue 2 fix).
+type Profile struct {
+	UserID int
+	Score  float64
+	Bio    string `db:"column:biography"`
+}
+
 func init() {
 	dsl.Register(User{})
+	dsl.Register(Profile{})
 }
 
 func TestFieldName(t *testing.T) {
@@ -30,16 +38,31 @@ func TestColumnName(t *testing.T) {
 	if got := dsl.ColumnName(u, &u.Email); got != "email_addr" {
 		t.Fatalf("ColumnName: want email_addr, got %s", got)
 	}
-	// default snake_case
 	if got := dsl.ColumnName(u, &u.Name); got != "name" {
 		t.Fatalf("ColumnName: want name, got %s", got)
+	}
+}
+
+func TestFieldsWithoutTags(t *testing.T) {
+	p := &Profile{}
+	// UserID has no db tag at all — should resolve to snake_case
+	if got := dsl.ColumnName(p, &p.UserID); got != "user_id" {
+		t.Fatalf("ColumnName(UserID): want user_id, got %s", got)
+	}
+	if got := dsl.ColumnName(p, &p.Score); got != "score" {
+		t.Fatalf("ColumnName(Score): want score, got %s", got)
+	}
+	// Bio has a column override
+	if got := dsl.ColumnName(p, &p.Bio); got != "biography" {
+		t.Fatalf("ColumnName(Bio): want biography, got %s", got)
 	}
 }
 
 func TestEq(t *testing.T) {
 	u := &User{}
 	cond := dsl.Eq(u, &u.Age, 18)
-	if cond.Field != "Age" || cond.Op != query.OpEq || cond.Value != 18 {
+	// Field now holds the column name
+	if cond.Field != "age" || cond.Op != query.OpEq || cond.Value != 18 {
 		t.Fatalf("Eq: unexpected %+v", cond)
 	}
 }
@@ -47,7 +70,7 @@ func TestEq(t *testing.T) {
 func TestGt(t *testing.T) {
 	u := &User{}
 	cond := dsl.Gt(u, &u.Age, 21)
-	if cond.Op != query.OpGt || cond.Value != 21 {
+	if cond.Field != "age" || cond.Op != query.OpGt || cond.Value != 21 {
 		t.Fatalf("Gt: unexpected %+v", cond)
 	}
 }
@@ -55,7 +78,7 @@ func TestGt(t *testing.T) {
 func TestContains(t *testing.T) {
 	u := &User{}
 	cond := dsl.Contains(u, &u.Name, "alice")
-	if cond.Op != query.OpLike || cond.Value != "%alice%" {
+	if cond.Field != "name" || cond.Op != query.OpLike || cond.Value != "%alice%" {
 		t.Fatalf("Contains: unexpected %+v", cond)
 	}
 }
@@ -63,6 +86,9 @@ func TestContains(t *testing.T) {
 func TestIn(t *testing.T) {
 	u := &User{}
 	cond := dsl.In(u, &u.Age, 18, 21, 30)
+	if cond.Field != "age" {
+		t.Fatalf("In: want field age, got %s", cond.Field)
+	}
 	items, ok := cond.Value.([]any)
 	if !ok || len(items) != 3 {
 		t.Fatalf("In: unexpected value %+v", cond.Value)
@@ -72,8 +98,16 @@ func TestIn(t *testing.T) {
 func TestIsNil(t *testing.T) {
 	u := &User{}
 	cond := dsl.IsNil(u, &u.Age)
-	if cond.Op != query.OpIsNil {
-		t.Fatalf("IsNil: unexpected op %v", cond.Op)
+	if cond.Field != "age" || cond.Op != query.OpIsNil {
+		t.Fatalf("IsNil: unexpected %+v", cond)
+	}
+}
+
+func TestEqOnUntaggedField(t *testing.T) {
+	p := &Profile{}
+	cond := dsl.Eq(p, &p.Score, 9.5)
+	if cond.Field != "score" || cond.Value != 9.5 {
+		t.Fatalf("Eq(untagged): unexpected %+v", cond)
 	}
 }
 
@@ -84,7 +118,7 @@ func TestBuilderFilter(t *testing.T) {
 			dsl.Gt(u, &u.Age, 18),
 			dsl.Contains(u, &u.Name, "al"),
 		).
-		OrderBy("Age", query.Desc).
+		OrderBy("age", query.Desc).
 		Limit(10).
 		Build()
 

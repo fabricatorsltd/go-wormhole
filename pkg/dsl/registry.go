@@ -39,6 +39,7 @@ func init() {
 
 // Register inspects a struct type (pass a zero-value or pointer) and
 // builds the offset→field mapping used by the pointer-tracking DSL.
+// All exported fields are registered; db tags provide optional column overrides.
 // Call once at boot for every domain entity.
 func Register(v any) {
 	t := reflect.TypeOf(v)
@@ -57,21 +58,25 @@ func Register(v any) {
 	}
 
 	tm := &typeMap{byOff: make(map[uintptr]*fieldInfo)}
-	parsed := parser.ParseType(t)
 
-	for _, fm := range parsed {
-		sf, ok := t.FieldByName(fm.Name)
-		if !ok || !sf.IsExported() {
+	for i := 0; i < t.NumField(); i++ {
+		sf := t.Field(i)
+		if !sf.IsExported() {
 			continue
 		}
 
-		col := fm.Get("column")
-		if col == "" {
-			col = toSnake(fm.Name)
+		col := toSnake(sf.Name)
+
+		tagStr := sf.Tag.Get("db")
+		if tagStr != "" {
+			parsedTags := parser.Parse(tagStr)
+			if vals := parsedTags["column"]; len(vals) > 0 {
+				col = vals[0]
+			}
 		}
 
 		fi := fieldInfo{
-			Name:   fm.Name,
+			Name:   sf.Name,
 			Column: col,
 			Offset: sf.Offset,
 			Type:   sf.Type,
@@ -100,42 +105,12 @@ func lookup(t reflect.Type) *typeMap {
 	return registry[t]
 }
 
-// resolveField converts a pointer-to-field into its fieldInfo by
-// computing the offset from the struct base address.
-//
-// Usage: given `u := &User{}`, calling resolveField(u, &u.Age) finds
-// the Age field via `uintptr(&u.Age) - uintptr(u)`.
-func resolveField(base any, fieldPtr any) (*fieldInfo, error) {
-	baseVal := reflect.ValueOf(base)
-	if baseVal.Kind() != reflect.Ptr || baseVal.Elem().Kind() != reflect.Struct {
-		return nil, fmt.Errorf("base must be *struct")
-	}
-
-	baseAddr := baseVal.Pointer()
-	fieldAddr := reflect.ValueOf(fieldPtr).Pointer()
-	offset := fieldAddr - baseAddr
-
-	tm := lookup(baseVal.Type())
-	if tm == nil {
-		return nil, fmt.Errorf("type %s not registered — call dsl.Register first", baseVal.Type().Elem().Name())
-	}
-
-	fi, ok := tm.byOff[offset]
-	if !ok {
-		return nil, fmt.Errorf("offset %d not found in %s", offset, baseVal.Type().Elem().Name())
-	}
-	return fi, nil
-}
-
 // FieldName returns the Go field name for a field pointer.
 //
 //	u := &User{}
 //	dsl.FieldName(u, &u.Age) // → "Age"
-func FieldName(base any, fieldPtr any) string {
-	fi, err := resolveField(base, fieldPtr)
-	if err != nil {
-		panic(err)
-	}
+func FieldName[B any, F any](base *B, fieldPtr *F) string {
+	fi := resolveOrPanic(base, fieldPtr)
 	return fi.Name
 }
 
@@ -143,22 +118,23 @@ func FieldName(base any, fieldPtr any) string {
 //
 //	u := &User{}
 //	dsl.ColumnName(u, &u.CreatedAt) // → "created_at"
-func ColumnName(base any, fieldPtr any) string {
-	fi, err := resolveField(base, fieldPtr)
-	if err != nil {
-		panic(err)
-	}
+func ColumnName[B any, F any](base *B, fieldPtr *F) string {
+	fi := resolveOrPanic(base, fieldPtr)
 	return fi.Column
 }
 
-// unsafeResolve is the fast path used internally by condition constructors.
-// It uses unsafe.Pointer to avoid reflect overhead on the hot path.
-func unsafeResolve(base unsafe.Pointer, fieldPtr unsafe.Pointer, baseType reflect.Type) (*fieldInfo, bool) {
-	offset := uintptr(fieldPtr) - uintptr(base)
-	tm := lookup(baseType)
+func resolveOrPanic[B any, F any](base *B, fieldPtr *F) *fieldInfo {
+	baseAddr := uintptr(unsafe.Pointer(base))
+	fieldAddr := uintptr(unsafe.Pointer(fieldPtr))
+	offset := fieldAddr - baseAddr
+
+	tm := lookup(reflect.TypeOf(base).Elem())
 	if tm == nil {
-		return nil, false
+		panic("dsl: type not registered — call dsl.Register first")
 	}
 	fi, ok := tm.byOff[offset]
-	return fi, ok
+	if !ok {
+		panic(fmt.Sprintf("dsl: offset %d not found", offset))
+	}
+	return fi
 }

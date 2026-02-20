@@ -82,13 +82,20 @@ func ParseType(t reflect.Type) *model.EntityMeta {
 	return meta
 }
 
-// toSnake converts CamelCase to snake_case.
+// toSnake converts CamelCase to snake_case, handling acronyms
+// like "UserID" → "user_id".
 func toSnake(s string) string {
 	var b strings.Builder
-	for i, r := range s {
+	runes := []rune(s)
+	for i, r := range runes {
 		if r >= 'A' && r <= 'Z' {
 			if i > 0 {
-				b.WriteByte('_')
+				prev := runes[i-1]
+				if prev >= 'a' && prev <= 'z' {
+					b.WriteByte('_')
+				} else if prev >= 'A' && prev <= 'Z' && i+1 < len(runes) && runes[i+1] >= 'a' && runes[i+1] <= 'z' {
+					b.WriteByte('_')
+				}
 			}
 			b.WriteRune(r + ('a' - 'A'))
 		} else {
