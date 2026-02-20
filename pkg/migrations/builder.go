@@ -18,15 +18,19 @@ type SchemaBuilder struct {
 type Dialect interface {
 	QuoteIdent(s string) string
 	AutoIncrementClause() string
+	// AutoIncrementType returns a replacement SQL type for auto-increment
+	// columns (e.g. "SERIAL" for Postgres). Return "" to keep the original type.
+	AutoIncrementType(baseType string) string
 	SupportsIfNotExists() bool
 }
 
 // DefaultDialect produces standard SQL with double-quote identifiers.
 type DefaultDialect struct{}
 
-func (DefaultDialect) QuoteIdent(s string) string      { return `"` + s + `"` }
-func (DefaultDialect) AutoIncrementClause() string      { return "AUTOINCREMENT" }
-func (DefaultDialect) SupportsIfNotExists() bool        { return true }
+func (DefaultDialect) QuoteIdent(s string) string         { return `"` + s + `"` }
+func (DefaultDialect) AutoIncrementClause() string         { return "AUTOINCREMENT" }
+func (DefaultDialect) AutoIncrementType(string) string     { return "" }
+func (DefaultDialect) SupportsIfNotExists() bool           { return true }
 
 // NewBuilder creates a SchemaBuilder with the default dialect.
 func NewBuilder() *SchemaBuilder {
@@ -135,13 +139,26 @@ func (b *SchemaBuilder) renderCreateTable(o CreateTableOp, q func(string) string
 func (b *SchemaBuilder) renderColumnDef(c ColumnDef, q func(string) string) string {
 	var parts []string
 	parts = append(parts, q(c.Name))
-	parts = append(parts, b.resolveType(c))
+
+	resolvedType := b.resolveType(c)
+
+	// Let the dialect replace the type for auto-increment columns
+	// (e.g. Postgres: INTEGER → SERIAL)
+	if c.AutoIncr {
+		if replacement := b.dialect.AutoIncrementType(resolvedType); replacement != "" {
+			resolvedType = replacement
+		}
+	}
+	parts = append(parts, resolvedType)
 
 	if c.PrimaryKey {
 		parts = append(parts, "PRIMARY KEY")
 	}
 	if c.AutoIncr {
-		parts = append(parts, b.dialect.AutoIncrementClause())
+		clause := b.dialect.AutoIncrementClause()
+		if clause != "" {
+			parts = append(parts, clause)
+		}
 	}
 	if !c.Nullable && !c.PrimaryKey {
 		parts = append(parts, "NOT NULL")

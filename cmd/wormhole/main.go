@@ -47,6 +47,18 @@ func main() {
 			printUsage()
 			os.Exit(1)
 		}
+	case "dbcontext":
+		if len(os.Args) < 3 {
+			printUsage()
+			os.Exit(1)
+		}
+		switch os.Args[2] {
+		case "scaffold":
+			cmdScaffold()
+		default:
+			printUsage()
+			os.Exit(1)
+		}
 	default:
 		printUsage()
 		os.Exit(1)
@@ -58,6 +70,7 @@ func printUsage() {
   wormhole migrations add <Name>   Generate a new migration from model diff
   wormhole migrations list         List pending migrations
   wormhole database update         Apply pending migrations
+  wormhole dbcontext scaffold      Generate Go structs from existing database
 
 Environment:
   WORMHOLE_DSN      Database connection string (required for database commands)
@@ -181,6 +194,43 @@ func cmdDatabaseUpdate() {
 	fmt.Printf("Applied migrations: %d\n", len(applied))
 	fmt.Println("Run your application with migration files compiled in to apply pending migrations.")
 	fmt.Println("See: migrations.NewRunner(db).Up(ctx)")
+}
+
+func cmdScaffold() {
+	db := openDB()
+	defer db.Close()
+
+	ctx := context.Background()
+
+	results, err := migrations.Scaffold(ctx, db)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "scaffold: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(results) == 0 {
+		fmt.Println("No user tables found.")
+		return
+	}
+
+	dir := migrationsDir()
+	outDir := filepath.Join(filepath.Dir(dir), "models")
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "mkdir: %v\n", err)
+		os.Exit(1)
+	}
+
+	header := "package models\n\n"
+	for _, r := range results {
+		path := filepath.Join(outDir, r.TableName+".go")
+		content := header + r.Source
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			fmt.Fprintf(os.Stderr, "write %s: %v\n", path, err)
+			os.Exit(1)
+		}
+		fmt.Printf("  ✓ %s → %s\n", r.TableName, path)
+	}
+	fmt.Printf("\nScaffolded %d table(s) into %s/\n", len(results), outDir)
 }
 
 // --- helpers ---
