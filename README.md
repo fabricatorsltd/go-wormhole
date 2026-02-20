@@ -21,8 +21,11 @@ An Entity Framework-inspired ORM / Data Mapper for Go, built on top of
 - **DI-ready** — first-class integration with `go-foundation/pkg/di`.
 - **Resilient commits** — optional retry with exponential backoff around
   transactional flushes.
+- **Resilient reads** — retry and circuit breaker on `Find` / `Execute`.
 - **Aggregated errors** — `MultiError` collects validation failures across
   entities instead of failing at the first one.
+- **Fluent EntitySet API** — `ctx.Set(&u).Find(1)` retrieves, populates and
+  auto-tracks an entity in one call.
 
 ## Architecture
 
@@ -45,13 +48,14 @@ pkg/
 package main
 
 import (
-    "context"
     "fmt"
+    "time"
 
     wh "github.com/mirkobrombin/go-wormhole/pkg/context"
     "github.com/mirkobrombin/go-wormhole/pkg/dsl"
     "github.com/mirkobrombin/go-wormhole/pkg/provider"
     "github.com/mirkobrombin/go-wormhole/pkg/query"
+    "github.com/mirkobrombin/go-foundation/pkg/resiliency"
 )
 
 type User struct {
@@ -75,25 +79,30 @@ func main() {
     // provider.Register("postgres", myPostgresProvider)
     // provider.SetDefault("postgres")
 
-    ctx := wh.New(provider.Default())
+    ctx := wh.New(provider.Default(),
+        wh.WithReadRetry(resiliency.WithAttempts(3)),
+        wh.WithCircuitBreaker(5, time.Minute),
+    )
     defer ctx.Close()
 
-    // Type-safe queries — no magic strings
-    u := &User{}
-    q := ctx.Query("user").
-        Filter(dsl.Gt(u, &u.Age, 18), dsl.Contains(u, &u.Name, "al")).
-        OrderBy("Age", query.Desc).
+    // EntitySet: Find by PK (auto-tracked as Unchanged)
+    var u User
+    ctx.Set(&u).Find(1)
+    u.Age = 35
+    ctx.Save() // partial UPDATE: only "age" column
+
+    // EntitySet: Query with DSL predicates
+    var users []User
+    ctx.Set(&users).
+        Where(dsl.Gt(&u, &u.Age, 18)).
+        OrderBy("age", query.Desc).
         Limit(10).
-        Build()
-    _ = q
+        All()
 
     // Unit of Work
     alice := &User{Name: "Alice", Age: 30}
     ctx.Add(alice)
-
-    if err := ctx.SaveChanges(context.Background()); err != nil {
-        panic(err)
-    }
+    ctx.Save()
 }
 ```
 

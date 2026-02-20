@@ -3,6 +3,7 @@ package context
 import (
 	stdctx "context"
 	"fmt"
+	"time"
 
 	"github.com/mirkobrombin/go-foundation/pkg/errors"
 	"github.com/mirkobrombin/go-foundation/pkg/hooks"
@@ -17,10 +18,13 @@ import (
 // of a session: tracking entities, detecting changes, and flushing
 // them through the underlying Provider inside a transaction.
 type DbContext struct {
-	provider provider.Provider
-	tracker  *tracker.Tracker
-	hooks    *hooks.Runner
-	retry    []func(*resiliency.RetryOptions)
+	provider  provider.Provider
+	tracker   *tracker.Tracker
+	hooks     *hooks.Runner
+	retry     []func(*resiliency.RetryOptions)
+	readRetry []func(*resiliency.RetryOptions)
+	breaker   *resiliency.CircuitBreaker
+	stdCtx    stdctx.Context
 }
 
 // Option configures a DbContext.
@@ -30,6 +34,30 @@ type Option func(*DbContext)
 func WithRetry(opts ...func(*resiliency.RetryOptions)) Option {
 	return func(c *DbContext) {
 		c.retry = opts
+	}
+}
+
+// WithReadRetry adds retry options for read operations (Find, Execute).
+func WithReadRetry(opts ...func(*resiliency.RetryOptions)) Option {
+	return func(c *DbContext) {
+		c.readRetry = opts
+	}
+}
+
+// WithCircuitBreaker enables a circuit breaker for all provider calls.
+// The breaker opens after `threshold` consecutive failures and stays
+// open for `timeout` before entering half-open state.
+func WithCircuitBreaker(threshold int, timeout time.Duration) Option {
+	return func(c *DbContext) {
+		c.breaker = resiliency.NewCircuitBreaker(threshold, timeout)
+	}
+}
+
+// WithContext sets a default context for operations that don't receive
+// an explicit context (e.g. EntitySet.Find, Save).
+func WithContext(ctx stdctx.Context) Option {
+	return func(c *DbContext) {
+		c.stdCtx = ctx
 	}
 }
 
@@ -105,6 +133,11 @@ func (c *DbContext) After(event string, fn hooks.HookFunc) {
 	c.hooks.After(event, fn)
 }
 
+// Save is a convenience wrapper for SaveChanges using the stored context.
+func (c *DbContext) Save() error {
+	return c.SaveChanges(c.opCtx())
+}
+
 // --- Persistence ---
 
 // SaveChanges detects modifications, runs lifecycle hooks, and
@@ -161,7 +194,7 @@ func (c *DbContext) SaveChanges(ctx stdctx.Context) error {
 }
 
 // flush executes the pending operations inside a transaction,
-// optionally wrapped in a retry policy.
+// optionally wrapped in a retry policy and circuit breaker.
 func (c *DbContext) flush(ctx stdctx.Context, pending []*model.Entry) error {
 	commit := func() error {
 		tx, err := c.provider.Begin(ctx)
@@ -177,6 +210,13 @@ func (c *DbContext) flush(ctx stdctx.Context, pending []*model.Entry) error {
 		}
 
 		return tx.Commit()
+	}
+
+	if c.breaker != nil {
+		orig := commit
+		commit = func() error {
+			return c.breaker.Execute(orig)
+		}
 	}
 
 	if len(c.retry) > 0 {
@@ -215,4 +255,29 @@ func (c *DbContext) pkValue(e *model.Entry) any {
 func (c *DbContext) Close() error {
 	c.tracker.Clear()
 	return c.provider.Close()
+}
+
+// --- internal helpers ---
+
+// opCtx returns the stored context or Background if none was set.
+func (c *DbContext) opCtx() stdctx.Context {
+	if c.stdCtx != nil {
+		return c.stdCtx
+	}
+	return stdctx.Background()
+}
+
+// withReadResilience wraps a read operation with circuit breaker and retry.
+func (c *DbContext) withReadResilience(ctx stdctx.Context, fn func() error) error {
+	wrapped := fn
+	if c.breaker != nil {
+		orig := wrapped
+		wrapped = func() error {
+			return c.breaker.Execute(orig)
+		}
+	}
+	if len(c.readRetry) > 0 {
+		return resiliency.Retry(ctx, wrapped, c.readRetry...)
+	}
+	return wrapped()
 }
