@@ -2,7 +2,10 @@ module github.com/mirkobrombin/go-wormhole
 
 go 1.24.4
 
-require github.com/mirkobrombin/go-foundation v0.3.0
+require (
+	github.com/mattn/go-sqlite3 v1.14.22
+	github.com/mirkobrombin/go-foundation v0.3.0
+)
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect

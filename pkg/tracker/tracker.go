@@ -105,15 +105,21 @@ func (t *Tracker) Pending() []*model.Entry {
 // AcceptAll resets all entries to Unchanged and re-snapshots.
 // Called after a successful SaveChanges.
 func (t *Tracker) AcceptAll() {
+	// Collect keys to delete outside Range to avoid deadlock
+	// (Range holds RLock, Delete needs Lock on the same shard).
+	var deleteKeys []string
 	t.entries.Range(func(k string, e *model.Entry) bool {
 		if e.State == model.Deleted {
-			t.entries.Delete(k)
+			deleteKeys = append(deleteKeys, k)
 			return true
 		}
 		e.State = model.Unchanged
 		e.Snapshot = snapshot(e.Meta, e.Entity)
 		return true
 	})
+	for _, k := range deleteKeys {
+		t.entries.Delete(k)
+	}
 }
 
 // Clear removes all tracked entities.
@@ -161,6 +167,11 @@ func (t *Tracker) entityKey(meta *model.EntityMeta, entity any) string {
 
 	if meta.PrimaryKey != nil {
 		pk := val.FieldByName(meta.PrimaryKey.FieldName).Interface()
+		// For auto-increment PKs with zero value (not yet assigned),
+		// use pointer address to avoid collisions between new entities.
+		if meta.PrimaryKey.AutoIncr && reflect.ValueOf(pk).IsZero() {
+			return fmt.Sprintf("%s#ptr(%d)", meta.Name, val.UnsafeAddr())
+		}
 		return fmt.Sprintf("%s#%v", meta.Name, pk)
 	}
 	// fallback: use pointer address
