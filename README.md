@@ -26,6 +26,9 @@ An Entity Framework-inspired ORM / Data Mapper for Go, built on top of
   entities instead of failing at the first one.
 - **Fluent EntitySet API** — `ctx.Set(&u).Find(1)` retrieves, populates and
   auto-tracks an entity in one call.
+- **Code-First Migrations** — EF Core-style migration engine. Detects schema
+  changes from Go structs, generates timestamped `.go` files with `Up()`/`Down()`
+  methods, and applies them transactionally with history tracking.
 
 ## Architecture
 
@@ -39,8 +42,48 @@ pkg/
 ├── schema/       Struct-tag parser → EntityMeta (cached)
 ├── slipstream/   Provider: go-slipstream (Bitcask / NoSQL)
 ├── sql/          Provider: database/sql (Postgres, SQLite, …)
+├── migrations/   Code-First migration engine (differ, runner, codegen)
 └── tracker/      Identity Map + snapshot change detector
 ```
+
+## Migrations
+
+```go
+runner := migrations.NewRunner(db)
+
+runner.Add(migrations.Migration{
+    ID: "001_create_users",
+    Up: func(b *migrations.SchemaBuilder) {
+        b.CreateTable("users",
+            migrations.ColumnDef{Name: "id", SQLType: "INTEGER", PrimaryKey: true, AutoIncr: true},
+            migrations.ColumnDef{Name: "name", SQLType: "TEXT"},
+            migrations.ColumnDef{Name: "email", SQLType: "VARCHAR(255)", Nullable: true},
+        )
+        b.CreateIndex("idx_users_email", "users", true, "email")
+    },
+    Down: func(b *migrations.SchemaBuilder) {
+        b.DropIndex("idx_users_email")
+        b.DropTable("users")
+    },
+})
+
+// Apply all pending migrations
+runner.Up(ctx)
+```
+
+**CLI:**
+
+```bash
+wormhole migrations add CreateUsers   # generate migration from model diff
+wormhole migrations list              # show pending/applied status
+wormhole database update              # apply pending migrations
+```
+
+> **MySQL/MariaDB note:** DDL statements (`CREATE TABLE`, `ALTER TABLE`) cause an
+> implicit `COMMIT` in MySQL. If a migration contains multiple DDL commands and one
+> fails mid-way, the preceding commands **cannot be rolled back**. Postgres and SQLite
+> support transactional DDL and are not affected. A future MySQL `Dialect` will handle
+> this explicitly.
 
 ## Quick Start
 
