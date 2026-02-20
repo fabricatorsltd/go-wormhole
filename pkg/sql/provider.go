@@ -240,6 +240,18 @@ func scanRows(meta *model.EntityMeta, rows *sql.Rows, dest any) error {
 		return fmt.Errorf("dest must be *[]T or *[]*T")
 	}
 
+	// Read actual column names returned by the query
+	cols, err := rows.Columns()
+	if err != nil {
+		return fmt.Errorf("columns: %w", err)
+	}
+
+	// Build column→field index for O(1) lookup
+	colToField := make(map[string]*model.FieldMeta, len(meta.Fields))
+	for i := range meta.Fields {
+		colToField[meta.Fields[i].Column] = &meta.Fields[i]
+	}
+
 	sliceVal := dv.Elem()
 	elemType := sliceVal.Type().Elem()
 	isPtr := elemType.Kind() == reflect.Ptr
@@ -253,10 +265,19 @@ func scanRows(meta *model.EntityMeta, rows *sql.Rows, dest any) error {
 		}
 
 		target := elem.Elem()
-		ptrs := make([]any, len(meta.Fields))
-		for i, f := range meta.Fields {
-			ptrs[i] = target.FieldByName(f.FieldName).Addr().Interface()
+
+		// Build scan destinations aligned to actual column order
+		ptrs := make([]any, len(cols))
+		for i, col := range cols {
+			if fm, ok := colToField[col]; ok {
+				ptrs[i] = target.FieldByName(fm.FieldName).Addr().Interface()
+			} else {
+				// Column not mapped (e.g. from a JOIN) — discard into a throwaway
+				var discard any
+				ptrs[i] = &discard
+			}
 		}
+
 		if err := rows.Scan(ptrs...); err != nil {
 			return err
 		}
