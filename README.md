@@ -29,6 +29,12 @@ An Entity Framework-inspired ORM / Data Mapper for Go, built on top of
 - **Code-First Migrations** — EF Core-style migration engine. Detects schema
   changes from Go structs, generates timestamped `.go` files with `Up()`/`Down()`
   methods, and applies them transactionally with history tracking.
+- **Multi-Dialect DDL** — `PostgresDialect` (SERIAL/BIGSERIAL, `$N` placeholders),
+  `MySQLDialect` (backtick quoting, AUTO_INCREMENT), `DefaultDialect` (SQLite).
+- **Scaffold from DB** — reverse-engineers an existing database into Go structs
+  with `db:"..."` tags via `wormhole dbcontext scaffold`.
+- **Snapshot Rebuild** — reconstructs cumulative schema from migration history
+  without a live DB connection.
 
 ## Architecture
 

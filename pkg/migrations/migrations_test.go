@@ -564,3 +564,268 @@ func TestE2EDifferToRunner(t *testing.T) {
 		t.Errorf("email = %v, want bob@test.com", email)
 	}
 }
+
+// --- Postgres Dialect tests ---
+
+func TestPostgresDialectAutoIncrement(t *testing.T) {
+	b := migrations.NewBuilderWith(migrations.PostgresDialect{})
+	b.CreateTable("users",
+		migrations.ColumnDef{Name: "id", SQLType: "INTEGER", PrimaryKey: true, AutoIncr: true},
+		migrations.ColumnDef{Name: "name", SQLType: "TEXT"},
+	)
+
+	stmts := b.Statements()
+	s := stmts[0]
+
+	// Postgres should use SERIAL instead of INTEGER + AUTOINCREMENT
+	if !strings.Contains(s, "SERIAL") {
+		t.Errorf("expected SERIAL in Postgres DDL: %s", s)
+	}
+	if strings.Contains(s, "AUTOINCREMENT") {
+		t.Errorf("should not contain AUTOINCREMENT: %s", s)
+	}
+	if strings.Contains(s, "AUTO_INCREMENT") {
+		t.Errorf("should not contain AUTO_INCREMENT: %s", s)
+	}
+}
+
+func TestPostgresDialectBigserial(t *testing.T) {
+	b := migrations.NewBuilderWith(migrations.PostgresDialect{})
+	b.CreateTable("events",
+		migrations.ColumnDef{Name: "id", SQLType: "BIGINT", PrimaryKey: true, AutoIncr: true},
+	)
+
+	s := b.Statements()[0]
+	if !strings.Contains(s, "BIGSERIAL") {
+		t.Errorf("expected BIGSERIAL for BIGINT auto-increment: %s", s)
+	}
+}
+
+// --- MySQL Dialect tests ---
+
+func TestMySQLDialectQuoting(t *testing.T) {
+	b := migrations.NewBuilderWith(migrations.MySQLDialect{})
+	b.CreateTable("orders",
+		migrations.ColumnDef{Name: "id", SQLType: "INTEGER", PrimaryKey: true, AutoIncr: true},
+		migrations.ColumnDef{Name: "total", SQLType: "DECIMAL(10,2)"},
+	)
+
+	s := b.Statements()[0]
+
+	// MySQL uses backticks
+	if !strings.Contains(s, "`orders`") {
+		t.Errorf("expected backtick quoting: %s", s)
+	}
+	if !strings.Contains(s, "AUTO_INCREMENT") {
+		t.Errorf("expected AUTO_INCREMENT: %s", s)
+	}
+	if strings.Contains(s, "AUTOINCREMENT") {
+		t.Errorf("should not contain SQLite AUTOINCREMENT: %s", s)
+	}
+}
+
+// --- Snapshot Rebuild tests ---
+
+func TestRebuildSnapshot(t *testing.T) {
+	ops1 := []migrations.MigrationOp{
+		migrations.CreateTableOp{
+			Table: "users",
+			Columns: []migrations.ColumnDef{
+				{Name: "id", SQLType: "INTEGER", PrimaryKey: true},
+				{Name: "name", SQLType: "TEXT"},
+			},
+		},
+	}
+
+	ops2 := []migrations.MigrationOp{
+		migrations.AddColumnOp{
+			Table:  "users",
+			Column: migrations.ColumnDef{Name: "email", SQLType: "TEXT", Nullable: true},
+		},
+		migrations.CreateTableOp{
+			Table: "orders",
+			Columns: []migrations.ColumnDef{
+				{Name: "id", SQLType: "INTEGER", PrimaryKey: true},
+			},
+		},
+	}
+
+	schema := migrations.RebuildSnapshot([][]migrations.MigrationOp{ops1, ops2})
+
+	// users should have 3 columns
+	if ts, ok := schema.Tables["users"]; !ok {
+		t.Fatal("missing users table")
+	} else {
+		if len(ts.Columns) != 3 {
+			t.Errorf("users columns = %d, want 3", len(ts.Columns))
+		}
+		if _, ok := ts.Columns["email"]; !ok {
+			t.Error("missing email column after AddColumn")
+		}
+	}
+
+	// orders should exist
+	if _, ok := schema.Tables["orders"]; !ok {
+		t.Fatal("missing orders table")
+	}
+}
+
+func TestRebuildSnapshotDropTable(t *testing.T) {
+	ops := [][]migrations.MigrationOp{
+		{migrations.CreateTableOp{Table: "temp", Columns: []migrations.ColumnDef{{Name: "id"}}}},
+		{migrations.DropTableOp{Table: "temp"}},
+	}
+
+	schema := migrations.RebuildSnapshot(ops)
+	if _, ok := schema.Tables["temp"]; ok {
+		t.Error("temp table should have been dropped")
+	}
+}
+
+func TestRebuildSnapshotDropColumn(t *testing.T) {
+	ops := [][]migrations.MigrationOp{
+		{migrations.CreateTableOp{
+			Table:   "items",
+			Columns: []migrations.ColumnDef{{Name: "id"}, {Name: "old_col"}},
+		}},
+		{migrations.DropColumnOp{Table: "items", Column: "old_col"}},
+	}
+
+	schema := migrations.RebuildSnapshot(ops)
+	ts := schema.Tables["items"]
+	if _, ok := ts.Columns["old_col"]; ok {
+		t.Error("old_col should have been dropped")
+	}
+	if _, ok := ts.Columns["id"]; !ok {
+		t.Error("id should still exist")
+	}
+}
+
+func TestRebuildFromMigrations(t *testing.T) {
+	migs := []migrations.Migration{
+		{
+			ID: "002_add_email",
+			Up: func(b *migrations.SchemaBuilder) {
+				b.AddColumn("users", migrations.ColumnDef{Name: "email", SQLType: "TEXT"})
+			},
+		},
+		{
+			ID: "001_create_users",
+			Up: func(b *migrations.SchemaBuilder) {
+				b.CreateTable("users",
+					migrations.ColumnDef{Name: "id", SQLType: "INTEGER"},
+					migrations.ColumnDef{Name: "name", SQLType: "TEXT"},
+				)
+			},
+		},
+	}
+
+	// Migrations are out of order — RebuildFromMigrations must sort by ID
+	schema := migrations.RebuildFromMigrations(migs)
+
+	ts := schema.Tables["users"]
+	if ts == nil {
+		t.Fatal("missing users table")
+	}
+	if len(ts.Columns) != 3 {
+		t.Errorf("columns = %d, want 3", len(ts.Columns))
+	}
+}
+
+// --- Scaffold tests ---
+
+func TestScaffoldSQLite(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+
+	// Create some tables
+	_, err := db.ExecContext(ctx, `CREATE TABLE "products" (
+		"id" INTEGER PRIMARY KEY AUTOINCREMENT,
+		"name" TEXT NOT NULL,
+		"price" REAL,
+		"active" BOOLEAN DEFAULT 1
+	)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = db.ExecContext(ctx, `CREATE TABLE "categories" (
+		"id" INTEGER PRIMARY KEY,
+		"title" TEXT NOT NULL
+	)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := migrations.Scaffold(ctx, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(results) != 2 {
+		t.Fatalf("expected 2 tables, got %d", len(results))
+	}
+
+	// Check products struct
+	var prodResult *migrations.ScaffoldResult
+	for i := range results {
+		if results[i].TableName == "products" {
+			prodResult = &results[i]
+		}
+	}
+	if prodResult == nil {
+		t.Fatal("missing products scaffold")
+	}
+
+	if prodResult.StructName != "Products" {
+		t.Errorf("struct name = %q, want Products", prodResult.StructName)
+	}
+	if !strings.Contains(prodResult.Source, "type Products struct") {
+		t.Errorf("missing struct declaration: %s", prodResult.Source)
+	}
+	if !strings.Contains(prodResult.Source, `db:"column:id`) {
+		t.Errorf("missing id column tag: %s", prodResult.Source)
+	}
+	if !strings.Contains(prodResult.Source, "primary_key") {
+		t.Errorf("missing primary_key tag: %s", prodResult.Source)
+	}
+}
+
+func TestScaffoldEmptyDB(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+
+	results, err := migrations.Scaffold(ctx, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 tables, got %d", len(results))
+	}
+}
+
+func TestSqlTypeToGoMapping(t *testing.T) {
+	// Verify scaffold generates correct Go types
+	db := openTestDB(t)
+	ctx := context.Background()
+
+	_, _ = db.ExecContext(ctx, `CREATE TABLE "mixed" (
+		"id" INTEGER PRIMARY KEY,
+		"big" BIGINT,
+		"price" REAL,
+		"active" BOOLEAN,
+		"name" TEXT,
+		"data" BLOB
+	)`)
+
+	results, _ := migrations.Scaffold(ctx, db)
+	if len(results) == 0 {
+		t.Fatal("no results")
+	}
+
+	src := results[0].Source
+	// int for INTEGER PK (not nullable)
+	if !strings.Contains(src, "int") {
+		t.Errorf("expected int type: %s", src)
+	}
+}
