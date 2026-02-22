@@ -1,9 +1,11 @@
 package context
 
 import (
+	"fmt"
 	"reflect"
 
 	"github.com/mirkobrombin/go-wormhole/pkg/model"
+	"github.com/mirkobrombin/go-wormhole/pkg/provider"
 	"github.com/mirkobrombin/go-wormhole/pkg/query"
 	"github.com/mirkobrombin/go-wormhole/pkg/schema"
 )
@@ -82,20 +84,7 @@ func (s *EntitySet) Offset(n int) *EntitySet {
 // All executes the built query and scans results into dest
 // (must be *[]T or *[]*T).
 func (s *EntitySet) All() error {
-	b := query.From(s.meta.Name)
-	if len(s.preds) > 0 {
-		b.Filter(s.preds...)
-	}
-	for _, sort := range s.sorts {
-		b.OrderBy(sort.Field, sort.Dir)
-	}
-	if s.lim > 0 {
-		b.Limit(s.lim)
-	}
-	if s.off > 0 {
-		b.Offset(s.off)
-	}
-	q := b.Build()
+	q := s.buildQuery()
 
 	ctx := s.ctx.opCtx()
 	return s.ctx.withReadResilience(ctx, func() error {
@@ -115,4 +104,35 @@ func (s *EntitySet) Remove(entities ...any) {
 	for _, e := range entities {
 		s.ctx.tracker.Remove(e)
 	}
+}
+
+// ToSQL compiles the current query chain and returns the SQL string and
+// parameters without executing anything. Returns an error if the
+// provider does not implement QueryExplainer.
+func (s *EntitySet) ToSQL() (string, []any, error) {
+	exp, ok := s.ctx.provider.(provider.QueryExplainer)
+	if !ok {
+		return "", nil, fmt.Errorf("provider %q does not support ToSQL (QueryExplainer)", s.ctx.provider.Name())
+	}
+
+	q := s.buildQuery()
+	c := exp.ExplainSelect(s.meta, q)
+	return c.SQL, c.Params, nil
+}
+
+func (s *EntitySet) buildQuery() query.Query {
+	b := query.From(s.meta.Name)
+	if len(s.preds) > 0 {
+		b.Filter(s.preds...)
+	}
+	for _, sort := range s.sorts {
+		b.OrderBy(sort.Field, sort.Dir)
+	}
+	if s.lim > 0 {
+		b.Limit(s.lim)
+	}
+	if s.off > 0 {
+		b.Offset(s.off)
+	}
+	return b.Build()
 }

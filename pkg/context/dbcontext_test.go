@@ -91,6 +91,28 @@ func (t mockTx) Execute(ctx stdctx.Context, meta *model.EntityMeta, q query.Quer
 	return t.m.Execute(ctx, meta, q, dest)
 }
 
+// --- QueryExplainer on mock ---
+
+func (m *mockProvider) ExplainSelect(meta *model.EntityMeta, q query.Query) provider.CompiledQuery {
+	return provider.CompiledQuery{SQL: "SELECT FROM " + meta.Name, Params: nil}
+}
+
+func (m *mockProvider) ExplainFindByPK(meta *model.EntityMeta, pkValue any) provider.CompiledQuery {
+	return provider.CompiledQuery{SQL: "SELECT FROM " + meta.Name + " WHERE pk=?", Params: []any{pkValue}}
+}
+
+func (m *mockProvider) ExplainInsert(meta *model.EntityMeta, entity any) provider.CompiledQuery {
+	return provider.CompiledQuery{SQL: "INSERT INTO " + meta.Name, Params: []any{"mock"}}
+}
+
+func (m *mockProvider) ExplainUpdate(meta *model.EntityMeta, entity any, changed []string) provider.CompiledQuery {
+	return provider.CompiledQuery{SQL: "UPDATE " + meta.Name, Params: []any{"mock"}}
+}
+
+func (m *mockProvider) ExplainDelete(meta *model.EntityMeta, pkValue any) provider.CompiledQuery {
+	return provider.CompiledQuery{SQL: "DELETE FROM " + meta.Name + " WHERE pk=?", Params: []any{pkValue}}
+}
+
 // --- test entities ---
 
 type TestUser struct {
@@ -218,5 +240,115 @@ func TestSetAddAndTrack(t *testing.T) {
 	}
 	if entry.State != model.Added {
 		t.Fatalf("expected Added, got %v", entry.State)
+	}
+}
+
+// --- PendingSQL tests ---
+
+func TestPendingSQL_Insert(t *testing.T) {
+	mp := &mockProvider{}
+	ctx := wctx.New(mp)
+
+	u := &TestUser{Name: "alice", Age: 30}
+	ctx.Add(u)
+
+	changes, err := ctx.PendingSQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 1 {
+		t.Fatalf("expected 1 change, got %d", len(changes))
+	}
+	if changes[0].Operation != "INSERT" {
+		t.Fatalf("expected INSERT, got %s", changes[0].Operation)
+	}
+	if changes[0].SQL == "" {
+		t.Fatal("SQL should not be empty")
+	}
+}
+
+func TestPendingSQL_Update(t *testing.T) {
+	mp := &mockProvider{}
+	ctx := wctx.New(mp)
+
+	u := &TestUser{ID: 1, Name: "alice", Age: 30}
+	ctx.Attach(u)
+
+	u.Name = "bob"
+
+	changes, err := ctx.PendingSQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 1 {
+		t.Fatalf("expected 1 change, got %d", len(changes))
+	}
+	if changes[0].Operation != "UPDATE" {
+		t.Fatalf("expected UPDATE, got %s", changes[0].Operation)
+	}
+}
+
+func TestPendingSQL_Delete(t *testing.T) {
+	mp := &mockProvider{}
+	ctx := wctx.New(mp)
+
+	u := &TestUser{ID: 5, Name: "charlie", Age: 40}
+	ctx.Attach(u)
+	ctx.Remove(u)
+
+	changes, err := ctx.PendingSQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 1 {
+		t.Fatalf("expected 1 change, got %d", len(changes))
+	}
+	if changes[0].Operation != "DELETE" {
+		t.Fatalf("expected DELETE, got %s", changes[0].Operation)
+	}
+}
+
+func TestPendingSQL_Empty(t *testing.T) {
+	mp := &mockProvider{}
+	ctx := wctx.New(mp)
+
+	changes, err := ctx.PendingSQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 0 {
+		t.Fatalf("expected 0 changes, got %d", len(changes))
+	}
+}
+
+func TestPendingSQL_Mixed(t *testing.T) {
+	mp := &mockProvider{}
+	ctx := wctx.New(mp)
+
+	u1 := &TestUser{Name: "new_user", Age: 20}
+	ctx.Add(u1)
+
+	u2 := &TestUser{ID: 2, Name: "existing", Age: 50}
+	ctx.Attach(u2)
+	u2.Age = 51
+
+	u3 := &TestUser{ID: 3, Name: "to_delete", Age: 60}
+	ctx.Attach(u3)
+	ctx.Remove(u3)
+
+	changes, err := ctx.PendingSQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 3 {
+		t.Fatalf("expected 3 changes, got %d", len(changes))
+	}
+
+	ops := map[string]bool{}
+	for _, c := range changes {
+		ops[c.Operation] = true
+	}
+	if !ops["INSERT"] || !ops["UPDATE"] || !ops["DELETE"] {
+		t.Fatalf("expected INSERT+UPDATE+DELETE, got %v", ops)
 	}
 }

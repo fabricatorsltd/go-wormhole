@@ -257,6 +257,65 @@ func (c *DbContext) Close() error {
 	return c.provider.Close()
 }
 
+// PendingChanges describes a single pending operation for preview.
+type PendingChange struct {
+	Table     string
+	Operation string // "INSERT", "UPDATE", "DELETE"
+	SQL       string
+	Params    []any
+}
+
+// PendingSQL detects changes exactly like SaveChanges but returns the
+// compiled SQL statements without executing them. Useful for debugging
+// what SaveChanges would do. Returns an error if the provider does not
+// implement QueryExplainer.
+func (c *DbContext) PendingSQL() ([]PendingChange, error) {
+	exp, ok := c.provider.(provider.QueryExplainer)
+	if !ok {
+		return nil, fmt.Errorf("provider %q does not support PendingSQL (QueryExplainer)", c.provider.Name())
+	}
+
+	c.tracker.DetectChanges()
+	pending := c.tracker.Pending()
+	if len(pending) == 0 {
+		return nil, nil
+	}
+
+	out := make([]PendingChange, 0, len(pending))
+	for _, e := range pending {
+		var pc PendingChange
+		pc.Table = e.Meta.Name
+
+		switch e.State {
+		case model.Added:
+			pc.Operation = "INSERT"
+			cq := exp.ExplainInsert(e.Meta, e.Entity)
+			pc.SQL = cq.SQL
+			pc.Params = cq.Params
+
+		case model.Modified:
+			pc.Operation = "UPDATE"
+			changed := tracker.ChangedFields(e)
+			cq := exp.ExplainUpdate(e.Meta, e.Entity, changed)
+			pc.SQL = cq.SQL
+			pc.Params = cq.Params
+
+		case model.Deleted:
+			pc.Operation = "DELETE"
+			pk := c.pkValue(e)
+			cq := exp.ExplainDelete(e.Meta, pk)
+			pc.SQL = cq.SQL
+			pc.Params = cq.Params
+
+		default:
+			continue
+		}
+
+		out = append(out, pc)
+	}
+	return out, nil
+}
+
 // --- internal helpers ---
 
 // opCtx returns the stored context or Background if none was set.
