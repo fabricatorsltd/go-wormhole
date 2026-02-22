@@ -101,12 +101,24 @@ func (b *SchemaBuilder) renderOp(op MigrationOp) string {
 	case DropTableOp:
 		return fmt.Sprintf("DROP TABLE IF EXISTS %s", q(o.Table))
 	case AddColumnOp:
-		return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s",
-			q(o.Table), b.renderColumnDef(o.Column, q))
+		addKw := "ADD COLUMN"
+		if ac, ok := b.dialect.(interface{ AddColumnKeyword() string }); ok {
+			addKw = ac.AddColumnKeyword()
+		}
+		return fmt.Sprintf("ALTER TABLE %s %s %s",
+			q(o.Table), addKw, b.renderColumnDef(o.Column, q))
 	case DropColumnOp:
 		return fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s",
 			q(o.Table), q(o.Column))
 	case AlterColumnOp:
+		if as, ok := b.dialect.(interface{ AlterColumnSuffix() string }); ok {
+			suffix := as.AlterColumnSuffix()
+			if suffix == "" {
+				// MSSQL style: ALTER COLUMN col newtype (no TYPE keyword)
+				return fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s %s",
+					q(o.Table), q(o.Column.Name), b.resolveType(o.Column))
+			}
+		}
 		return fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s",
 			q(o.Table), q(o.Column.Name), b.resolveType(o.Column))
 	case CreateIndexOp:
@@ -118,8 +130,12 @@ func (b *SchemaBuilder) renderOp(op MigrationOp) string {
 		for i, c := range o.Columns {
 			cols[i] = q(c)
 		}
-		return fmt.Sprintf("CREATE %sINDEX IF NOT EXISTS %s ON %s (%s)",
-			u, q(o.Name), q(o.Table), strings.Join(cols, ", "))
+		ifne := ""
+		if b.dialect.SupportsIfNotExists() {
+			ifne = "IF NOT EXISTS "
+		}
+		return fmt.Sprintf("CREATE %sINDEX %s%s ON %s (%s)",
+			u, ifne, q(o.Name), q(o.Table), strings.Join(cols, ", "))
 	case DropIndexOp:
 		return fmt.Sprintf("DROP INDEX IF EXISTS %s", q(o.Name))
 	default:
@@ -132,8 +148,12 @@ func (b *SchemaBuilder) renderCreateTable(o CreateTableOp, q func(string) string
 	for _, c := range o.Columns {
 		colDefs = append(colDefs, b.renderColumnDef(c, q))
 	}
-	return fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n  %s\n)",
-		q(o.Table), strings.Join(colDefs, ",\n  "))
+	ifne := ""
+	if b.dialect.SupportsIfNotExists() {
+		ifne = "IF NOT EXISTS "
+	}
+	return fmt.Sprintf("CREATE TABLE %s%s (\n  %s\n)",
+		ifne, q(o.Table), strings.Join(colDefs, ",\n  "))
 }
 
 func (b *SchemaBuilder) renderColumnDef(c ColumnDef, q func(string) string) string {
