@@ -217,3 +217,110 @@ func TestQueryLogger_Delete(t *testing.T) {
 		}
 	}
 }
+
+// --- Explain (dry-run) tests ---
+
+func TestExplainSelect(t *testing.T) {
+	db := setupLoggerTestDB(t)
+	defer db.Close()
+
+	p := wsql.New(db)
+	meta := loggerTestMeta()
+
+	q := query.From("users").
+		Filter(query.Predicate{Field: "age", Op: query.OpGt, Value: 18}).
+		Limit(5).
+		Build()
+
+	c := p.ExplainSelect(meta, q)
+
+	if !strings.Contains(c.SQL, "SELECT") {
+		t.Fatalf("expected SELECT: %s", c.SQL)
+	}
+	if !strings.Contains(c.SQL, "age") {
+		t.Fatalf("expected age filter: %s", c.SQL)
+	}
+	if len(c.Params) != 1 || c.Params[0] != 18 {
+		t.Fatalf("expected raw param 18, got %v", c.Params)
+	}
+}
+
+func TestExplainInsert(t *testing.T) {
+	db := setupLoggerTestDB(t)
+	defer db.Close()
+
+	p := wsql.New(db)
+	meta := loggerTestMeta()
+
+	entity := &struct {
+		ID   int
+		Name string
+		Age  int
+	}{Name: "test", Age: 42}
+
+	c := p.ExplainInsert(meta, entity)
+
+	if !strings.Contains(c.SQL, "INSERT") {
+		t.Fatalf("expected INSERT: %s", c.SQL)
+	}
+	if len(c.Params) == 0 {
+		t.Fatal("expected params")
+	}
+}
+
+func TestExplainFindByPK(t *testing.T) {
+	db := setupLoggerTestDB(t)
+	defer db.Close()
+
+	p := wsql.New(db)
+	meta := loggerTestMeta()
+
+	c := p.ExplainFindByPK(meta, 7)
+
+	if !strings.Contains(c.SQL, "SELECT") {
+		t.Fatalf("expected SELECT: %s", c.SQL)
+	}
+	if len(c.Params) != 1 || c.Params[0] != 7 {
+		t.Fatalf("expected param 7, got %v", c.Params)
+	}
+}
+
+func TestExplainDelete(t *testing.T) {
+	db := setupLoggerTestDB(t)
+	defer db.Close()
+
+	p := wsql.New(db)
+	meta := loggerTestMeta()
+
+	c := p.ExplainDelete(meta, 99)
+
+	if !strings.Contains(c.SQL, "DELETE") {
+		t.Fatalf("expected DELETE: %s", c.SQL)
+	}
+	if len(c.Params) != 1 || c.Params[0] != 99 {
+		t.Fatalf("expected param 99, got %v", c.Params)
+	}
+}
+
+func TestExplainUpdate(t *testing.T) {
+	db := setupLoggerTestDB(t)
+	defer db.Close()
+
+	p := wsql.New(db)
+	meta := loggerTestMeta()
+
+	entity := &struct {
+		ID   int
+		Name string
+		Age  int
+	}{ID: 1, Name: "updated", Age: 50}
+
+	c := p.ExplainUpdate(meta, entity, []string{"Name"})
+
+	if !strings.Contains(c.SQL, "UPDATE") {
+		t.Fatalf("expected UPDATE: %s", c.SQL)
+	}
+	if len(c.Params) == 0 {
+		t.Fatal("expected params")
+	}
+}

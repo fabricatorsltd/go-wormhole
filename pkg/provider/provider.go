@@ -57,3 +57,19 @@ type Tx interface {
 	Find(ctx context.Context, meta *model.EntityMeta, pkValue any, dest any) error
 	Execute(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error
 }
+
+// CompiledQuery holds a pre-compiled query for inspection without execution.
+type CompiledQuery struct {
+	SQL    string
+	Params []any
+}
+
+// QueryExplainer is an optional interface a Provider may implement to
+// expose compiled queries without executing them. Useful for debugging.
+type QueryExplainer interface {
+	ExplainSelect(meta *model.EntityMeta, q query.Query) CompiledQuery
+	ExplainFindByPK(meta *model.EntityMeta, pkValue any) CompiledQuery
+	ExplainInsert(meta *model.EntityMeta, entity any) CompiledQuery
+	ExplainUpdate(meta *model.EntityMeta, entity any, changed []string) CompiledQuery
+	ExplainDelete(meta *model.EntityMeta, pkValue any) CompiledQuery
+}
