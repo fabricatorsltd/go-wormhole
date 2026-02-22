@@ -12,12 +12,18 @@ import (
 	"github.com/mirkobrombin/go-wormhole/pkg/query"
 )
 
+// QueryLogger is called before every SQL execution with the compiled
+// query and its parameters.
+type QueryLogger func(sql string, params []any)
+
 // Provider implements provider.Provider for any database/sql-compatible driver.
 type Provider struct {
 	db       *sql.DB
 	compiler *Compiler
 	name     string
 	retry    []func(*resiliency.RetryOptions)
+	logger   QueryLogger
+	rawLog   bool
 }
 
 var _ provider.Provider = (*Provider)(nil)
@@ -41,6 +47,19 @@ func WithRetry(opts ...func(*resiliency.RetryOptions)) Option {
 	return func(p *Provider) { p.retry = opts }
 }
 
+// WithQueryLogger attaches a logger invoked before every SQL execution.
+// Parameters are redacted to "[REDACTED]" to prevent accidental leaks
+// of sensitive data (passwords, tokens, PII) in log output.
+func WithQueryLogger(fn QueryLogger) Option {
+	return func(p *Provider) { p.logger = fn; p.rawLog = false }
+}
+
+// WithQueryLoggerUnsafe attaches a logger that receives raw parameter
+// values. Use only in development — parameters may contain sensitive data.
+func WithQueryLoggerUnsafe(fn QueryLogger) Option {
+	return func(p *Provider) { p.logger = fn; p.rawLog = true }
+}
+
 // New creates a SQL provider. The db connection should already be open.
 func New(db *sql.DB, opts ...Option) *Provider {
 	p := &Provider{
@@ -52,6 +71,21 @@ func New(db *sql.DB, opts ...Option) *Provider {
 		o(p)
 	}
 	return p
+}
+
+func (p *Provider) logQuery(c Compiled) {
+	if p.logger == nil {
+		return
+	}
+	if p.rawLog {
+		p.logger(c.SQL, c.Params)
+		return
+	}
+	redacted := make([]any, len(c.Params))
+	for i := range c.Params {
+		redacted[i] = "[REDACTED]"
+	}
+	p.logger(c.SQL, redacted)
 }
 
 func (p *Provider) Name() string { return p.name }
@@ -73,6 +107,7 @@ func (p *Provider) Insert(ctx context.Context, meta *model.EntityMeta, entity an
 	if meta.PrimaryKey != nil && meta.PrimaryKey.AutoIncr {
 		if p.compiler.Numbered {
 			c.SQL += fmt.Sprintf(" RETURNING %s", quoteIdent(meta.PrimaryKey.Column))
+			p.logQuery(c)
 			var id any
 			err := p.retryDo(ctx, func() error {
 				return p.db.QueryRowContext(ctx, c.SQL, c.Params...).Scan(&id)
@@ -80,6 +115,7 @@ func (p *Provider) Insert(ctx context.Context, meta *model.EntityMeta, entity an
 			return id, err
 		}
 		var resID int64
+		p.logQuery(c)
 		err := p.retryDo(ctx, func() error {
 			res, err := p.db.ExecContext(ctx, c.SQL, c.Params...)
 			if err != nil {
@@ -91,6 +127,7 @@ func (p *Provider) Insert(ctx context.Context, meta *model.EntityMeta, entity an
 		return resID, err
 	}
 
+	p.logQuery(c)
 	err := p.retryDo(ctx, func() error {
 		_, err := p.db.ExecContext(ctx, c.SQL, c.Params...)
 		return err
@@ -108,6 +145,7 @@ func (p *Provider) Update(ctx context.Context, meta *model.EntityMeta, entity an
 	if c.SQL == "" {
 		return nil
 	}
+	p.logQuery(c)
 	return p.retryDo(ctx, func() error {
 		_, err := p.db.ExecContext(ctx, c.SQL, c.Params...)
 		return err
@@ -116,6 +154,7 @@ func (p *Provider) Update(ctx context.Context, meta *model.EntityMeta, entity an
 
 func (p *Provider) Delete(ctx context.Context, meta *model.EntityMeta, pkValue any) error {
 	c := p.compiler.Delete(meta, pkValue)
+	p.logQuery(c)
 	return p.retryDo(ctx, func() error {
 		_, err := p.db.ExecContext(ctx, c.SQL, c.Params...)
 		return err
@@ -124,6 +163,7 @@ func (p *Provider) Delete(ctx context.Context, meta *model.EntityMeta, pkValue a
 
 func (p *Provider) Find(ctx context.Context, meta *model.EntityMeta, pkValue any, dest any) error {
 	c := p.compiler.FindByPK(meta, pkValue)
+	p.logQuery(c)
 	return p.retryDo(ctx, func() error {
 		row := p.db.QueryRowContext(ctx, c.SQL, c.Params...)
 		return scanRow(meta, row, dest)
@@ -134,6 +174,7 @@ func (p *Provider) Find(ctx context.Context, meta *model.EntityMeta, pkValue any
 
 func (p *Provider) Execute(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error {
 	c := p.compiler.Select(meta, q)
+	p.logQuery(c)
 	return p.retryDo(ctx, func() error {
 		rows, err := p.db.QueryContext(ctx, c.SQL, c.Params...)
 		if err != nil {
@@ -151,12 +192,29 @@ func (p *Provider) Begin(ctx context.Context) (provider.Tx, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &sqlTx{tx: stx, compiler: p.compiler}, nil
+	return &sqlTx{tx: stx, compiler: p.compiler, logger: p.logger, rawLog: p.rawLog}, nil
 }
 
 type sqlTx struct {
 	tx       *sql.Tx
 	compiler *Compiler
+	logger   QueryLogger
+	rawLog   bool
+}
+
+func (t *sqlTx) logQuery(c Compiled) {
+	if t.logger == nil {
+		return
+	}
+	if t.rawLog {
+		t.logger(c.SQL, c.Params)
+		return
+	}
+	redacted := make([]any, len(c.Params))
+	for i := range c.Params {
+		redacted[i] = "[REDACTED]"
+	}
+	t.logger(c.SQL, redacted)
 }
 
 func (t *sqlTx) Commit() error   { return t.tx.Commit() }
@@ -169,10 +227,12 @@ func (t *sqlTx) Insert(ctx context.Context, meta *model.EntityMeta, entity any) 
 	if meta.PrimaryKey != nil && meta.PrimaryKey.AutoIncr {
 		if t.compiler.Numbered {
 			c.SQL += fmt.Sprintf(" RETURNING %s", quoteIdent(meta.PrimaryKey.Column))
+			t.logQuery(c)
 			var id any
 			err := t.tx.QueryRowContext(ctx, c.SQL, c.Params...).Scan(&id)
 			return id, err
 		}
+		t.logQuery(c)
 		res, err := t.tx.ExecContext(ctx, c.SQL, c.Params...)
 		if err != nil {
 			return nil, err
@@ -181,6 +241,7 @@ func (t *sqlTx) Insert(ctx context.Context, meta *model.EntityMeta, entity any) 
 		return id, err
 	}
 
+	t.logQuery(c)
 	_, err := t.tx.ExecContext(ctx, c.SQL, c.Params...)
 	return pkFromStruct(meta, entity), err
 }
@@ -192,24 +253,28 @@ func (t *sqlTx) Update(ctx context.Context, meta *model.EntityMeta, entity any, 
 	if c.SQL == "" {
 		return nil
 	}
+	t.logQuery(c)
 	_, err := t.tx.ExecContext(ctx, c.SQL, c.Params...)
 	return err
 }
 
 func (t *sqlTx) Delete(ctx context.Context, meta *model.EntityMeta, pkValue any) error {
 	c := t.compiler.Delete(meta, pkValue)
+	t.logQuery(c)
 	_, err := t.tx.ExecContext(ctx, c.SQL, c.Params...)
 	return err
 }
 
 func (t *sqlTx) Find(ctx context.Context, meta *model.EntityMeta, pkValue any, dest any) error {
 	c := t.compiler.FindByPK(meta, pkValue)
+	t.logQuery(c)
 	row := t.tx.QueryRowContext(ctx, c.SQL, c.Params...)
 	return scanRow(meta, row, dest)
 }
 
 func (t *sqlTx) Execute(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error {
 	c := t.compiler.Select(meta, q)
+	t.logQuery(c)
 	rows, err := t.tx.QueryContext(ctx, c.SQL, c.Params...)
 	if err != nil {
 		return err
