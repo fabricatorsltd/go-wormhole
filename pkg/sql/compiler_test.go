@@ -255,3 +255,116 @@ func TestCompileOr(t *testing.T) {
 		t.Fatalf("params: want 2, got %d", len(out.Params))
 	}
 }
+
+// --- MSSQL compiler tests ---
+
+func TestMSSQLCompile_BracketQuoting(t *testing.T) {
+	c := &wsql.Compiler{AtPrefixed: true, BracketQuote: true, UseTOP: true}
+	meta := testMeta()
+
+	q := query.From("users").Build()
+	out := c.Select(meta, q)
+
+	if !strings.Contains(out.SQL, "[id]") {
+		t.Fatalf("expected bracket quoting: %s", out.SQL)
+	}
+	if !strings.Contains(out.SQL, "[users]") {
+		t.Fatalf("expected bracket quoting on table: %s", out.SQL)
+	}
+}
+
+func TestMSSQLCompile_AtPlaceholders(t *testing.T) {
+	c := &wsql.Compiler{AtPrefixed: true, BracketQuote: true, UseTOP: true}
+	meta := testMeta()
+
+	q := query.From("users").
+		Filter(query.Predicate{Field: "age", Op: query.OpEq, Value: 25}).
+		Build()
+	out := c.Select(meta, q)
+
+	if !strings.Contains(out.SQL, "@p1") {
+		t.Fatalf("expected @p1 placeholder: %s", out.SQL)
+	}
+}
+
+func TestMSSQLCompile_TopN(t *testing.T) {
+	c := &wsql.Compiler{AtPrefixed: true, BracketQuote: true, UseTOP: true}
+	meta := testMeta()
+
+	q := query.From("users").Limit(10).Build()
+	out := c.Select(meta, q)
+
+	if !strings.Contains(out.SQL, "TOP 10") {
+		t.Fatalf("expected TOP 10: %s", out.SQL)
+	}
+	if strings.Contains(out.SQL, "LIMIT") {
+		t.Fatalf("should NOT contain LIMIT: %s", out.SQL)
+	}
+}
+
+func TestMSSQLCompile_OffsetFetch(t *testing.T) {
+	c := &wsql.Compiler{AtPrefixed: true, BracketQuote: true, UseTOP: true}
+	meta := testMeta()
+
+	q := query.From("users").
+		OrderBy("age", query.Asc).
+		Limit(10).Offset(20).
+		Build()
+	out := c.Select(meta, q)
+
+	if !strings.Contains(out.SQL, "OFFSET 20 ROWS") {
+		t.Fatalf("expected OFFSET ROWS: %s", out.SQL)
+	}
+	if !strings.Contains(out.SQL, "FETCH NEXT 10 ROWS ONLY") {
+		t.Fatalf("expected FETCH NEXT: %s", out.SQL)
+	}
+	if strings.Contains(out.SQL, "TOP") {
+		t.Fatalf("should NOT use TOP when offset is set: %s", out.SQL)
+	}
+}
+
+func TestMSSQLCompile_FindByPK(t *testing.T) {
+	c := &wsql.Compiler{AtPrefixed: true, BracketQuote: true, UseTOP: true}
+	meta := testMeta()
+
+	out := c.FindByPK(meta, 42)
+
+	if !strings.Contains(out.SQL, "TOP 1") {
+		t.Fatalf("expected TOP 1: %s", out.SQL)
+	}
+	if strings.Contains(out.SQL, "LIMIT") {
+		t.Fatalf("should NOT contain LIMIT: %s", out.SQL)
+	}
+	if !strings.Contains(out.SQL, "@p1") {
+		t.Fatalf("expected @p1: %s", out.SQL)
+	}
+}
+
+func TestMSSQLCompile_Insert(t *testing.T) {
+	c := &wsql.Compiler{AtPrefixed: true, BracketQuote: true, UseTOP: true}
+	meta := testMeta()
+
+	values := map[string]any{"ID": 0, "Name": "alice", "Age": 30}
+	out := c.Insert(meta, values)
+
+	if !strings.Contains(out.SQL, "[users]") {
+		t.Fatalf("expected bracket quoting: %s", out.SQL)
+	}
+	if !strings.Contains(out.SQL, "@p1") {
+		t.Fatalf("expected @p1: %s", out.SQL)
+	}
+}
+
+func TestMSSQLCompile_Delete(t *testing.T) {
+	c := &wsql.Compiler{AtPrefixed: true, BracketQuote: true, UseTOP: true}
+	meta := testMeta()
+
+	out := c.Delete(meta, 1)
+
+	if !strings.Contains(out.SQL, "[users]") {
+		t.Fatalf("expected bracket quoting: %s", out.SQL)
+	}
+	if !strings.Contains(out.SQL, "@p1") {
+		t.Fatalf("expected @p1: %s", out.SQL)
+	}
+}
