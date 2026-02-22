@@ -27,6 +27,7 @@ type Provider struct {
 }
 
 var _ provider.Provider = (*Provider)(nil)
+var _ provider.QueryExplainer = (*Provider)(nil)
 
 // Option configures the SQL Provider.
 type Option func(*Provider)
@@ -183,6 +184,36 @@ func (p *Provider) Execute(ctx context.Context, meta *model.EntityMeta, q query.
 		defer rows.Close()
 		return scanRows(meta, rows, dest)
 	})
+}
+
+// --- QueryExplainer (dry-run) ---
+
+func (p *Provider) ExplainSelect(meta *model.EntityMeta, q query.Query) provider.CompiledQuery {
+	c := p.compiler.Select(meta, q)
+	return provider.CompiledQuery{SQL: c.SQL, Params: c.Params}
+}
+
+func (p *Provider) ExplainFindByPK(meta *model.EntityMeta, pkValue any) provider.CompiledQuery {
+	c := p.compiler.FindByPK(meta, pkValue)
+	return provider.CompiledQuery{SQL: c.SQL, Params: c.Params}
+}
+
+func (p *Provider) ExplainInsert(meta *model.EntityMeta, entity any) provider.CompiledQuery {
+	values := structToMap(meta, entity)
+	c := p.compiler.Insert(meta, values)
+	return provider.CompiledQuery{SQL: c.SQL, Params: c.Params}
+}
+
+func (p *Provider) ExplainUpdate(meta *model.EntityMeta, entity any, changed []string) provider.CompiledQuery {
+	values := structToMap(meta, entity)
+	pk := pkFromStruct(meta, entity)
+	c := p.compiler.Update(meta, values, changed, pk)
+	return provider.CompiledQuery{SQL: c.SQL, Params: c.Params}
+}
+
+func (p *Provider) ExplainDelete(meta *model.EntityMeta, pkValue any) provider.CompiledQuery {
+	c := p.compiler.Delete(meta, pkValue)
+	return provider.CompiledQuery{SQL: c.SQL, Params: c.Params}
 }
 
 // --- Transactions ---
