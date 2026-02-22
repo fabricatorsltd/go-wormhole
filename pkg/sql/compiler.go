@@ -19,6 +19,15 @@ type Compiler struct {
 	// Placeholder style: "?" (mysql/sqlite) or "$N" (postgres).
 	// Default is "?".
 	Numbered bool
+
+	// AtPrefixed uses @p1, @p2 style placeholders (MSSQL).
+	AtPrefixed bool
+
+	// BracketQuote uses [brackets] instead of "double quotes" (MSSQL).
+	BracketQuote bool
+
+	// UseTOP uses SELECT TOP N instead of LIMIT N (MSSQL).
+	UseTOP bool
 }
 
 // Select compiles a query.Query into a SELECT statement.
@@ -26,18 +35,21 @@ func (c *Compiler) Select(meta *model.EntityMeta, q query.Query) Compiled {
 	var b strings.Builder
 	var params []any
 
-	// SELECT columns
+	// SELECT columns (with optional TOP for MSSQL)
 	b.WriteString("SELECT ")
+	if c.UseTOP && q.Limit > 0 && q.Offset == 0 {
+		b.WriteString(fmt.Sprintf("TOP %d ", q.Limit))
+	}
 	for i, f := range meta.Fields {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.WriteString(quoteIdent(f.Column))
+		b.WriteString(c.quote(f.Column))
 	}
 
 	// FROM
 	b.WriteString(" FROM ")
-	b.WriteString(quoteIdent(meta.Name))
+	b.WriteString(c.quote(meta.Name))
 
 	// WHERE
 	if q.Where != nil {
@@ -53,7 +65,7 @@ func (c *Compiler) Select(meta *model.EntityMeta, q query.Query) Compiled {
 			b.WriteString(", ")
 		}
 		col := fieldColumn(meta, s.Field)
-		b.WriteString(quoteIdent(col))
+		b.WriteString(c.quote(col))
 		if s.Dir == query.Desc {
 			b.WriteString(" DESC")
 		} else {
@@ -62,11 +74,22 @@ func (c *Compiler) Select(meta *model.EntityMeta, q query.Query) Compiled {
 	}
 
 	// LIMIT / OFFSET
-	if q.Limit > 0 {
-		b.WriteString(fmt.Sprintf(" LIMIT %d", q.Limit))
-	}
-	if q.Offset > 0 {
-		b.WriteString(fmt.Sprintf(" OFFSET %d", q.Offset))
+	if c.UseTOP {
+		// MSSQL: OFFSET...FETCH when both limit and offset are set
+		if q.Offset > 0 {
+			b.WriteString(fmt.Sprintf(" OFFSET %d ROWS", q.Offset))
+			if q.Limit > 0 {
+				b.WriteString(fmt.Sprintf(" FETCH NEXT %d ROWS ONLY", q.Limit))
+			}
+		}
+		// TOP-only case already handled above
+	} else {
+		if q.Limit > 0 {
+			b.WriteString(fmt.Sprintf(" LIMIT %d", q.Limit))
+		}
+		if q.Offset > 0 {
+			b.WriteString(fmt.Sprintf(" OFFSET %d", q.Offset))
+		}
 	}
 
 	return Compiled{SQL: b.String(), Params: params}
@@ -82,14 +105,14 @@ func (c *Compiler) Insert(meta *model.EntityMeta, values map[string]any) Compile
 		if f.AutoIncr {
 			continue
 		}
-		cols = append(cols, quoteIdent(f.Column))
+		cols = append(cols, c.quote(f.Column))
 		params = append(params, values[f.FieldName])
 		placeholders = append(placeholders, c.ph(idx))
 		idx++
 	}
 
 	sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-		quoteIdent(meta.Name),
+		c.quote(meta.Name),
 		strings.Join(cols, ", "),
 		strings.Join(placeholders, ", "),
 	)
@@ -111,7 +134,7 @@ func (c *Compiler) Update(meta *model.EntityMeta, values map[string]any, changed
 		if _, ok := changedSet[f.FieldName]; !ok {
 			continue
 		}
-		sets = append(sets, fmt.Sprintf("%s = %s", quoteIdent(f.Column), c.ph(idx)))
+		sets = append(sets, fmt.Sprintf("%s = %s", c.quote(f.Column), c.ph(idx)))
 		params = append(params, values[f.FieldName])
 		idx++
 	}
@@ -126,9 +149,9 @@ func (c *Compiler) Update(meta *model.EntityMeta, values map[string]any, changed
 	}
 
 	sql := fmt.Sprintf("UPDATE %s SET %s WHERE %s = %s",
-		quoteIdent(meta.Name),
+		c.quote(meta.Name),
 		strings.Join(sets, ", "),
-		quoteIdent(pkCol),
+		c.quote(pkCol),
 		c.ph(idx),
 	)
 	params = append(params, pkValue)
@@ -142,8 +165,8 @@ func (c *Compiler) Delete(meta *model.EntityMeta, pkValue any) Compiled {
 		pkCol = meta.PrimaryKey.Column
 	}
 	sql := fmt.Sprintf("DELETE FROM %s WHERE %s = %s",
-		quoteIdent(meta.Name),
-		quoteIdent(pkCol),
+		c.quote(meta.Name),
+		c.quote(pkCol),
 		c.ph(1),
 	)
 	return Compiled{SQL: sql, Params: []any{pkValue}}
@@ -153,7 +176,7 @@ func (c *Compiler) Delete(meta *model.EntityMeta, pkValue any) Compiled {
 func (c *Compiler) FindByPK(meta *model.EntityMeta, pkValue any) Compiled {
 	var cols []string
 	for _, f := range meta.Fields {
-		cols = append(cols, quoteIdent(f.Column))
+		cols = append(cols, c.quote(f.Column))
 	}
 
 	pkCol := "id"
@@ -161,13 +184,23 @@ func (c *Compiler) FindByPK(meta *model.EntityMeta, pkValue any) Compiled {
 		pkCol = meta.PrimaryKey.Column
 	}
 
-	sql := fmt.Sprintf("SELECT %s FROM %s WHERE %s = %s LIMIT 1",
-		strings.Join(cols, ", "),
-		quoteIdent(meta.Name),
-		quoteIdent(pkCol),
-		c.ph(1),
-	)
-	return Compiled{SQL: sql, Params: []any{pkValue}}
+	var b strings.Builder
+	b.WriteString("SELECT ")
+	if c.UseTOP {
+		b.WriteString("TOP 1 ")
+	}
+	b.WriteString(strings.Join(cols, ", "))
+	b.WriteString(" FROM ")
+	b.WriteString(c.quote(meta.Name))
+	b.WriteString(" WHERE ")
+	b.WriteString(c.quote(pkCol))
+	b.WriteString(" = ")
+	b.WriteString(c.ph(1))
+	if !c.UseTOP {
+		b.WriteString(" LIMIT 1")
+	}
+
+	return Compiled{SQL: b.String(), Params: []any{pkValue}}
 }
 
 // --- Join support ---
@@ -180,14 +213,14 @@ func (c *Compiler) SelectWithJoins(meta *model.EntityMeta, q query.Query, joins 
 	}
 
 	// Inject JOINs right after FROM table
-	fromClause := fmt.Sprintf("FROM %s", quoteIdent(meta.Name))
+	fromClause := fmt.Sprintf("FROM %s", c.quote(meta.Name))
 	var joinSQL strings.Builder
 	joinSQL.WriteString(fromClause)
 	for _, j := range joins {
 		joinSQL.WriteString(fmt.Sprintf(" LEFT JOIN %s ON %s.%s = %s.%s",
-			quoteIdent(j.Table),
-			quoteIdent(meta.Name), quoteIdent(j.LocalKey),
-			quoteIdent(j.Table), quoteIdent(j.ForeignKey),
+			c.quote(j.Table),
+			c.quote(meta.Name), c.quote(j.LocalKey),
+			c.quote(j.Table), c.quote(j.ForeignKey),
 		))
 	}
 
@@ -214,8 +247,8 @@ func (c *Compiler) compileNode(b *strings.Builder, params *[]any, node query.Nod
 }
 
 func (c *Compiler) compilePredicate(b *strings.Builder, params *[]any, p query.Predicate) {
-	col := p.Field // use field name as column (schema resolves later)
-	b.WriteString(quoteIdent(col))
+	col := p.Field
+	b.WriteString(c.quote(col))
 
 	switch p.Op {
 	case query.OpEq:
@@ -283,10 +316,20 @@ func (c *Compiler) compileComposite(b *strings.Builder, params *[]any, comp quer
 }
 
 func (c *Compiler) ph(n int) string {
+	if c.AtPrefixed {
+		return fmt.Sprintf("@p%d", n)
+	}
 	if c.Numbered {
 		return fmt.Sprintf("$%d", n)
 	}
 	return "?"
+}
+
+func (c *Compiler) quote(s string) string {
+	if c.BracketQuote {
+		return "[" + s + "]"
+	}
+	return `"` + s + `"`
 }
 
 func quoteIdent(s string) string {

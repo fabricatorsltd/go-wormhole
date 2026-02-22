@@ -829,3 +829,72 @@ func TestSqlTypeToGoMapping(t *testing.T) {
 		t.Errorf("expected int type: %s", src)
 	}
 }
+
+// --- MSSQL Dialect tests ---
+
+func TestMSSQLDialect_BracketQuoting(t *testing.T) {
+	b := migrations.NewBuilderWith(migrations.MSSQLDialect{})
+	b.CreateTable("users",
+		migrations.ColumnDef{Name: "id", SQLType: "INTEGER", PrimaryKey: true, AutoIncr: true},
+		migrations.ColumnDef{Name: "name", SQLType: "NVARCHAR(255)"},
+	)
+
+	stmts := b.Statements()
+	s := stmts[0]
+	if !strings.Contains(s, "[users]") {
+		t.Errorf("expected bracket quoting: %s", s)
+	}
+	if !strings.Contains(s, "[id]") {
+		t.Errorf("expected bracket quoting on column: %s", s)
+	}
+}
+
+func TestMSSQLDialect_Identity(t *testing.T) {
+	b := migrations.NewBuilderWith(migrations.MSSQLDialect{})
+	b.CreateTable("users",
+		migrations.ColumnDef{Name: "id", SQLType: "INTEGER", PrimaryKey: true, AutoIncr: true},
+	)
+
+	s := b.Statements()[0]
+	if !strings.Contains(s, "IDENTITY(1,1)") {
+		t.Errorf("expected IDENTITY(1,1): %s", s)
+	}
+	if strings.Contains(s, "AUTOINCREMENT") {
+		t.Errorf("should NOT contain AUTOINCREMENT: %s", s)
+	}
+}
+
+func TestMSSQLDialect_NoIfNotExists(t *testing.T) {
+	b := migrations.NewBuilderWith(migrations.MSSQLDialect{})
+	b.CreateTable("t",
+		migrations.ColumnDef{Name: "id", SQLType: "INTEGER", PrimaryKey: true},
+	)
+
+	s := b.Statements()[0]
+	if strings.Contains(s, "IF NOT EXISTS") {
+		t.Errorf("MSSQL should NOT use IF NOT EXISTS: %s", s)
+	}
+}
+
+func TestMSSQLDialect_AddColumn(t *testing.T) {
+	b := migrations.NewBuilderWith(migrations.MSSQLDialect{})
+	b.AddColumn("users", migrations.ColumnDef{Name: "email", SQLType: "NVARCHAR(255)"})
+
+	s := b.Statements()[0]
+	if strings.Contains(s, "ADD COLUMN") {
+		t.Errorf("MSSQL should use ADD (not ADD COLUMN): %s", s)
+	}
+	if !strings.Contains(s, "ADD [email]") {
+		t.Errorf("expected ADD [email]: %s", s)
+	}
+}
+
+func TestMSSQLDialect_CreateIndex_NoIfNotExists(t *testing.T) {
+	b := migrations.NewBuilderWith(migrations.MSSQLDialect{})
+	b.CreateIndex("idx_email", "users", false, "email")
+
+	s := b.Statements()[0]
+	if strings.Contains(s, "IF NOT EXISTS") {
+		t.Errorf("MSSQL should NOT use IF NOT EXISTS on index: %s", s)
+	}
+}
