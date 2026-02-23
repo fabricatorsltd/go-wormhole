@@ -898,3 +898,81 @@ func TestMSSQLDialect_CreateIndex_NoIfNotExists(t *testing.T) {
 		t.Errorf("MSSQL should NOT use IF NOT EXISTS on index: %s", s)
 	}
 }
+
+// --- GenerateSQLScript ---
+
+func TestGenerateSQLScript_DefaultDialect(t *testing.T) {
+	ops := []migrations.MigrationOp{
+		migrations.CreateTableOp{
+			Table: "users",
+			Columns: []migrations.ColumnDef{
+				{Name: "id", SQLType: "INTEGER", PrimaryKey: true, AutoIncr: true},
+				{Name: "name", SQLType: "TEXT"},
+			},
+		},
+		migrations.CreateIndexOp{Name: "idx_users_name", Table: "users", Columns: []string{"name"}},
+	}
+
+	sql := migrations.GenerateSQLScript(ops, nil)
+
+	if !strings.Contains(sql, "CREATE TABLE") {
+		t.Error("expected CREATE TABLE in SQL script")
+	}
+	if !strings.Contains(sql, "CREATE INDEX") {
+		t.Error("expected CREATE INDEX in SQL script")
+	}
+	if !strings.Contains(sql, ";") {
+		t.Error("expected semicolons")
+	}
+	if !strings.Contains(sql, "Auto-generated") {
+		t.Error("expected header comment")
+	}
+}
+
+func TestGenerateSQLScript_PostgresDialect(t *testing.T) {
+	ops := []migrations.MigrationOp{
+		migrations.CreateTableOp{
+			Table: "posts",
+			Columns: []migrations.ColumnDef{
+				{Name: "id", SQLType: "INTEGER", PrimaryKey: true, AutoIncr: true},
+				{Name: "title", SQLType: "VARCHAR(200)"},
+			},
+		},
+	}
+
+	sql := migrations.GenerateSQLScript(ops, migrations.PostgresDialect{})
+
+	if !strings.Contains(sql, "SERIAL") {
+		t.Error("expected SERIAL for Postgres auto-increment")
+	}
+}
+
+func TestGenerateSQLScript_MSSQLDialect(t *testing.T) {
+	ops := []migrations.MigrationOp{
+		migrations.CreateTableOp{
+			Table: "items",
+			Columns: []migrations.ColumnDef{
+				{Name: "id", SQLType: "INTEGER", PrimaryKey: true, AutoIncr: true},
+			},
+		},
+	}
+
+	sql := migrations.GenerateSQLScript(ops, migrations.MSSQLDialect{})
+
+	if !strings.Contains(sql, "IDENTITY(1,1)") {
+		t.Error("expected IDENTITY(1,1) for MSSQL auto-increment")
+	}
+	if strings.Contains(sql, "IF NOT EXISTS") {
+		t.Error("MSSQL should not use IF NOT EXISTS")
+	}
+}
+
+func TestSQLScriptFileName(t *testing.T) {
+	name := migrations.SQLScriptFileName("AddUsers")
+	if !strings.HasSuffix(name, ".sql") {
+		t.Errorf("expected .sql suffix, got %s", name)
+	}
+	if !strings.Contains(name, "add_users") {
+		t.Errorf("expected snake_case name, got %s", name)
+	}
+}
