@@ -31,6 +31,8 @@ func main() {
 			cmdMigrationsAdd()
 		case "list":
 			cmdMigrationsList()
+		case "script":
+			cmdMigrationsScript()
 		default:
 			printUsage()
 			os.Exit(1)
@@ -67,10 +69,13 @@ func main() {
 
 func printUsage() {
 	fmt.Fprintln(os.Stderr, `Usage:
-  wormhole migrations add <Name>   Generate a new migration from model diff
-  wormhole migrations list         List pending migrations
-  wormhole database update         Apply pending migrations
-  wormhole dbcontext scaffold      Generate Go structs from existing database
+  wormhole migrations add <Name>              Generate a new migration from model diff
+  wormhole migrations script <Name> [dialect]  Export migration as .sql file
+  wormhole migrations list                     List pending migrations
+  wormhole database update                     Apply pending migrations
+  wormhole dbcontext scaffold                  Generate Go structs from existing database
+
+Dialects: default, postgres, mysql, mssql
 
 Environment:
   WORMHOLE_DSN      Database connection string (required for database commands)
@@ -194,6 +199,68 @@ func cmdDatabaseUpdate() {
 	fmt.Printf("Applied migrations: %d\n", len(applied))
 	fmt.Println("Run your application with migration files compiled in to apply pending migrations.")
 	fmt.Println("See: migrations.NewRunner(db).Up(ctx)")
+}
+
+func cmdMigrationsScript() {
+	if len(os.Args) < 4 {
+		fmt.Fprintln(os.Stderr, "Usage: wormhole migrations script <Name> [dialect]")
+		os.Exit(1)
+	}
+	name := os.Args[3]
+	dir := migrationsDir()
+
+	dialectName := "default"
+	if len(os.Args) >= 5 {
+		dialectName = os.Args[4]
+	}
+	dialect := resolveDialect(dialectName)
+
+	models := loadModels()
+	if len(models) == 0 {
+		fmt.Fprintln(os.Stderr, "No models registered. Call schema.Parse() on your entities first.")
+		os.Exit(1)
+	}
+
+	current := loadSnapshot(dir)
+	ops := migrations.ComputeDiff(models, current)
+	if len(ops) == 0 {
+		fmt.Println("No changes detected.")
+		return
+	}
+
+	script := migrations.GenerateSQLScript(ops, dialect)
+	fileName := migrations.SQLScriptFileName(name)
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "mkdir: %v\n", err)
+		os.Exit(1)
+	}
+
+	path := filepath.Join(dir, fileName)
+	if err := os.WriteFile(path, []byte(script), 0o644); err != nil {
+		fmt.Fprintf(os.Stderr, "write: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Created SQL script: %s\n", path)
+	fmt.Printf("Dialect: %s\n", dialectName)
+	fmt.Printf("Operations: %d\n", len(ops))
+	for _, op := range ops {
+		fmt.Printf("  - %s\n", describeOp(op))
+	}
+}
+
+func resolveDialect(name string) migrations.Dialect {
+	switch strings.ToLower(name) {
+	case "postgres", "pg":
+		return migrations.PostgresDialect{}
+	case "mysql":
+		return migrations.MySQLDialect{}
+	case "mssql", "sqlserver":
+		return migrations.MSSQLDialect{}
+	default:
+		return migrations.DefaultDialect{}
+	}
 }
 
 func cmdScaffold() {

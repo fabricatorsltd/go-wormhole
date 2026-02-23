@@ -1,0 +1,294 @@
+# go-wormhole — Cronologia Richieste e Implementazioni
+
+---
+
+## 1. Roadmap iniziale (Fasi 0–6)
+
+**Richiesta:** L'utente ha fornito la roadmap completa del progetto `go-wormhole` come ORM/Data Mapper per Go ispirato a Entity Framework, con 7 fasi (0–6): Setup, Core Architecture, Change Tracker, Code Generation, Provider Slipstream, Provider SQL, API Pubblica + Resilienza.
+
+**Implementazione:**
+- Clonato `go-foundation`, analizzati tutti i package interni
+- Scaffoldato il modulo `go-wormhole` (`go mod init`)
+- Creati i package core: `pkg/model`, `pkg/provider`, `pkg/query`, `pkg/schema`, `pkg/tracker`, `pkg/context`
+- Implementata integrazione con `pkg/di`, `pkg/adapters`, `pkg/tags`, `pkg/safemap`, `pkg/hooks`, `pkg/errors`, `pkg/resiliency`
+- Commit: `d3222f5 first commit`
+
+---
+
+## 2. "procedi pure"
+
+**Richiesta:** `procedi pure`
+
+**Implementazione:**
+- Completate Fasi 3–5: codegen CLI (scanner + emitter via `go/ast`), Slipstream provider (CRUD, AST→NoSQL, transazioni), SQL provider (compiler parametrizzato, partial updates, JOIN)
+- Pushato tutto
+
+---
+
+## 3. Cambio Fase 3: da codegen a pointer-tracking DSL
+
+**Richiesta:** L'utente ha fornito una roadmap aggiornata dove la Fase 3 passa da code generation a pointer-tracking DSL runtime.
+
+**Implementazione:**
+- Rimossi `cmd/wormhole/` e `pkg/gen/` (vecchio approccio codegen)
+- Creato `pkg/dsl/` con: offset registry, pointer-to-name resolver, generic condition constructors
+- 8 test DSL passing
+- Aggiornato README
+
+---
+
+## 4. Rimozione roadmap dal README
+
+**Richiesta:** L'utente ha chiesto di rimuovere la roadmap dal README.
+
+**Implementazione:**
+- Rimossa la tabella roadmap da README.md
+
+---
+
+## 5. Rimozione Copilot dai co-authors nella git history
+
+**Richiesta:** L'utente ha chiesto di rimuovere Copilot dai co-authors nella storia git.
+
+**Implementazione:**
+- Usato `git filter-branch` per strippare tutti i trailer `Co-authored-by`
+- Force-push della history pulita
+
+---
+
+## 6. Squash di tutta la history in un singolo commit
+
+**Richiesta:** L'utente ha chiesto di fare squash di tutta la history in un singolo "first commit".
+
+**Implementazione:**
+- Reset al root, amended a singolo commit "first commit"
+- Force-push su GitHub
+
+---
+
+## 7. PM code review: 2 issue critiche sul DSL
+
+**Richiesta:** L'utente (come PM) ha fornito una code review con 2 issue critiche: (1) performance della DSL con troppo reflect, (2) bug sui campi senza tag.
+
+**Implementazione:**
+- **Issue 1:** Cambiato `ops.go` da `Eq[T any](base any, ...)` a `Eq[B any, F any](base *B, ...)` con hot path `unsafe.Pointer` — eliminati tutti i reflect call nel query path
+- **Issue 2:** Cambiato `Register()` per iterare `t.NumField()` anziché `parser.ParseType()`, così i campi senza tag `db` vengono comunque registrati
+- Fixato `toSnake()` per gestire acronimi (UserID → user_id)
+- Predicate ora emettono `fi.Column` (nome storage) non `fi.Name` (nome Go)
+- Espansi test a 10/10
+- Commit: `b883960 fix: DSL performance + untagged fields`
+
+---
+
+## 8. PM code review: 2 issue critiche sul provider Slipstream
+
+**Richiesta:** L'utente (come PM) ha fornito una code review con 2 issue critiche: (1) panic scanInto, (2) index guard mancante.
+
+**Implementazione:**
+- **Issue 1:** Fixato `scanInto` per gestire sia `[]T` che `[]*T` in Slipstream e SQL provider
+- **Issue 2:** Aggiunto `indices map[string]struct{}` al Provider, `executeQuery` controlla se l'indice è registrato prima di chiamare `GetByIndex`
+- Commit: `3b1f7b2 fix: scanInto pointer slice panic + index guard in executeQuery`
+
+---
+
+## 9. Specifiche dettagliate Phase 5 (SQL Provider)
+
+**Richiesta:** L'utente ha fornito specifiche dettagliate per il SQL Provider (dynamic row scanning via `rows.Columns()`, dialect abstraction, ecc.)
+
+**Implementazione:**
+- Implementato scanning dinamico via `rows.Columns()` per robustezza JOIN
+- 12 compiler test aggiunti
+- Commit: `a1f377a feat: dynamic column scanning + SQL compiler tests`
+
+---
+
+## 10. Fase 6: EntitySet + Resilienza
+
+**Richiesta:** (approvazione PM sprint finale)
+
+**Implementazione:**
+- `pkg/context/set.go` — EntitySet fluent API (`Set(&u).Find(1)`, `Where().All()`)
+- `WithReadRetry`, `WithCircuitBreaker` options su DbContext
+- `Save()` convenience method
+- Commit: `9f59192 feat: EntitySet fluent API, read retry, circuit breaker`
+
+---
+
+## 11. Sprint Finale: retry provider-level + generics + stress test
+
+**Richiesta:** (continuazione sprint finale)
+
+**Implementazione:**
+- Retry provider-level (`retryDo`) su tutti i `db.ExecContext`/`db.QueryContext`
+- `pkg/context/generics.go` con `Find[T]` e `Query[T]`
+- **Fix bug critico:** deadlock in `tracker.AcceptAll()` (RLock→Lock su stesso shard)
+- **Fix bug critico:** collisione PK auto-increment (entità con PK=0 condividevano la stessa key nel tracker)
+- 18 E2E test con SQLite reale
+- Commit: `5444d9f feat: provider-level retry, generic Find/Query, E2E stress tests`
+
+---
+
+## 12. Epic: Code-First Migrations
+
+**Richiesta:** L'utente ha richiesto un sistema di migrazioni code-first in stile Entity Framework.
+
+**Implementazione:**
+- `pkg/migrations/types.go` — ColumnDef, tutti i tipi MigrationOp, DatabaseSchema/TableSchema
+- `pkg/migrations/builder.go` — SchemaBuilder con Dialect interface, DDL rendering
+- `pkg/migrations/differ.go` — ComputeDiff (compara EntityMeta targets vs DatabaseSchema)
+- `pkg/migrations/history.go` — tabella `_wormhole_migrations_history`
+- `pkg/migrations/runner.go` — esecuzione Up/Down in transazione
+- `pkg/migrations/codegen.go` — generazione file `.go` timestampati con Up()/Down()
+- `cmd/wormhole/main.go` — CLI con `migrations add`, `migrations list`, `database update`
+- 15 migration test
+- Commit: `c350603 feat: code-first migrations engine`
+
+---
+
+## 13. Feedback PM sulle migrazioni (3 note)
+
+**Richiesta:** PM ha dato 3 feedback: (1) warning data loss, (2) documentare caveat MySQL DDL, (3) approccio snapshot.
+
+**Implementazione:**
+- Warning ANSI giallo nel CLI per `DropTable`/`DropColumn`
+- Documentato caveat MySQL DDL implicit COMMIT nel README
+- Confermato approccio "query DB live" per snapshot
+- Commit: `9215fef feat: data loss warnings in CLI, migrations docs in README, MySQL DDL caveat`
+
+---
+
+## 14. "implementa tutti i future work"
+
+**Richiesta:** L'utente ha chiesto di implementare tutti gli item "future work".
+
+**Implementazione:**
+- `pkg/migrations/postgres.go` — PostgresDialect (SERIAL/BIGSERIAL)
+- `pkg/migrations/mysql.go` — MySQLDialect (backtick, AUTO_INCREMENT)
+- Estesa interfaccia `Dialect` con `AutoIncrementType(baseType string) string`
+- `pkg/migrations/scaffold.go` — reverse-engineering da information_schema/sqlite_master
+- `pkg/migrations/snapshot.go` — ricostruzione schema cumulativa dalle migrazioni
+- Comando `wormhole dbcontext scaffold` nel CLI
+- 10 nuovi test, totale 71 PASS
+- Commit: `c6633bf feat: Postgres/MySQL dialects, DB scaffold, snapshot rebuild`
+
+---
+
+## 15. Report completo del progetto
+
+**Richiesta:** L'utente ha chiesto un report/relazione completa del progetto.
+
+**Implementazione:**
+- Creato `RELAZIONE.md` (24K caratteri, 13 sezioni)
+
+---
+
+## 16. Documentazione strutturata
+
+**Richiesta:** L'utente ha chiesto una directory `docs/` strutturata con documentazione multi-capitolo.
+
+**Implementazione:**
+- 7 capitoli: getting-started, pointer-tracking-dsl, change-tracker, migrations, providers, resiliency, cli-reference
+- README snellito a elevator pitch + badge + link a docs/
+- Commit: `33a6eb8 docs: structured docs/ directory with 7 chapters, slimmed README`
+
+---
+
+## 17. Push su nuova repo
+
+**Richiesta:** `fai push del progetto nella repo https://github.com/fabricatorsltd/go-wormhole`
+
+**Implementazione:**
+- Cambiato remote da `mirkobrombin/go-wormhole` a `fabricatorsltd/go-wormhole`
+- Pushato tutto
+
+---
+
+## 18. Migrazioni vuote
+
+**Richiesta:** `una sciocchezza classica di EF è che se fai "add migration" e non c'è nulla da migrare ti crea comunque una migrazione vuota. Cosa succede in wormhole? Vorrei evitare di creare migrazioni vuote, piuttosto avvisiamo l'utente ed interrompiamo`
+
+**Implementazione:**
+- Verificato che il differ già restituisce slice vuoto se non ci sono differenze
+- Il codegen controlla `len(ops) == 0` e restituisce errore `"no changes detected"` senza creare file
+- Già implementato correttamente — nessuna modifica necessaria
+
+---
+
+## 19. Compatibilità T-SQL / MSSQL
+
+**Richiesta:** `è compatibile con T-SQL e quindi MS SQL?`
+
+**Implementazione:**
+- Analizzati i dialect esistenti (Postgres, MySQL, Default)
+- Identificate 5 incompatibilità: bracket quoting, IDENTITY(1,1), TOP/OFFSET FETCH, @pN placeholders, NVARCHAR/BIT types
+- Riportato all'utente con analisi dettagliata
+
+---
+
+## 20. Implementazione dialetto MSSQL
+
+**Richiesta:** `sì, implementa il dialetto MSSQL`
+
+**Implementazione:**
+- `pkg/migrations/mssql.go` — MSSQLDialect: bracket quoting `[id]`, `IDENTITY(1,1)`, `SupportsIfNotExists=false`, `ADD` senza `COLUMN`, `ALTER COLUMN` senza `TYPE`
+- `pkg/migrations/builder.go` — renderOp dialect-aware (AddColumnKeyword, AlterColumnSuffix interface checks), IF NOT EXISTS condizionale
+- `pkg/sql/compiler.go` — `AtPrefixed`, `BracketQuote`, `UseTOP` fields, `c.quote()` method, `@pN` placeholders, `TOP N`, `OFFSET FETCH NEXT`
+- 12 nuovi test MSSQL (5 migrations + 7 compiler)
+- Commit: `912eaaa feat: MSSQL/T-SQL dialect (migrations DDL + compiler DML)`
+
+---
+
+## 21. Query logging / debug
+
+**Richiesta:** `c'è un metodo di logging/debug per avere il print della query durante l'esecuzione?`
+
+Seguita da: `ok, come la mettiamo per il possibile leak di dati sensibili?`
+
+Seguita da: `mi piace, procedi`
+
+**Implementazione:**
+- `QueryLogger` type + campi `logger`/`rawLog` nel Provider
+- `WithQueryLogger(fn)` — safe by default, params redatti a `[REDACTED]`
+- `WithQueryLoggerUnsafe(fn)` — raw params in chiaro (solo dev, nome esplicito forza consapevolezza)
+- `logQuery()` helper chiamato prima di ogni `ExecContext`/`QueryContext` sia in Provider che in `sqlTx`
+- 5 test (redacted, unsafe, no-panic, select, delete)
+- Commit: `027af6a feat: query logger with safe-by-default param redaction`
+
+---
+
+## 22. Dry-run query preview
+
+**Richiesta:** `ora, se volessi ottenere la "raw query" senza dover optare per l'esecuzione? vorrei poter debuggare le query senza doverle eseguire davvero`
+
+Seguita da: `funziona solo con le select? può essere implementato anche "sul change tracker"? nel senso che prima di fare .Save() potrei voler fare .ToSQL() per capire cosa sta per succedere (ai fini di debug)`
+
+**Implementazione:**
+- `provider.QueryExplainer` interface (opzionale, via type assertion)
+- `provider.CompiledQuery` struct
+- `Provider.Explain{Select,Insert,Update,Delete,FindByPK}()` — compilano senza eseguire
+- `EntitySet.ToSQL()` — preview della SELECT dalla fluent API
+- `DbContext.PendingSQL()` — preview dell'intero `SaveChanges` changeset (INSERT/UPDATE/DELETE)
+- `PendingChange` struct con `Table`, `Operation`, `SQL`, `Params`
+- Refactor: estratto `buildQuery()` da `All()` per riuso in `ToSQL()`
+- 10 test (5 Explain + 5 PendingSQL: insert, update, delete, empty, mixed)
+- Commit: `9d0d458 feat: dry-run query preview (ToSQL, Explain*, PendingSQL)`
+
+---
+
+## Riepilogo Commit History
+
+```
+d3222f5  first commit
+b883960  fix: DSL performance + untagged fields
+3b1f7b2  fix: scanInto pointer slice panic + index guard in executeQuery
+a1f377a  feat: dynamic column scanning + SQL compiler tests
+9f59192  feat: EntitySet fluent API, read retry, circuit breaker
+5444d9f  feat: provider-level retry, generic Find/Query, E2E stress tests
+c350603  feat: code-first migrations engine (differ, builder, runner, codegen, CLI, history table)
+9215fef  feat: data loss warnings in CLI, migrations docs in README, MySQL DDL caveat
+c6633bf  feat: Postgres/MySQL dialects, DB scaffold, snapshot rebuild
+33a6eb8  docs: structured docs/ directory with 7 chapters, slimmed README
+912eaaa  feat: MSSQL/T-SQL dialect (migrations DDL + compiler DML)
+027af6a  feat: query logger with safe-by-default param redaction
+9d0d458  feat: dry-run query preview (ToSQL, Explain*, PendingSQL)
+```
