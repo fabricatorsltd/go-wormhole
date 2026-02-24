@@ -23,7 +23,7 @@ func GenerateMigrationFile(name string, ops []MigrationOp) string {
 
 	return fmt.Sprintf(`package migrations
 
-import "github.com/mirkobrombin/go-wormhole/pkg/migrations"
+import "github.com/fabricatorsltd/go-wormhole/pkg/migrations"
 
 func init() {
 	Register(migrations.Migration{

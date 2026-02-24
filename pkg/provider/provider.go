@@ -3,8 +3,8 @@ package provider
 import (
 	"context"
 
-	"github.com/mirkobrombin/go-wormhole/pkg/model"
-	"github.com/mirkobrombin/go-wormhole/pkg/query"
+	"github.com/fabricatorsltd/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/pkg/query"
 )
 
 // Provider is the contract every storage backend must implement.

@@ -14,7 +14,7 @@ transient errors (e.g. `driver: bad connection`, network timeouts):
 import (
     "time"
     "github.com/mirkobrombin/go-foundation/pkg/resiliency"
-    wormholesql "github.com/mirkobrombin/go-wormhole/pkg/sql"
+    wormholesql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
 )
 
 p := wormholesql.New(db,
@@ -36,7 +36,7 @@ For read operations (`Find`, `Execute`), the `DbContext` provides its own
 retry layer — independent from the provider's retry:
 
 ```go
-import wh "github.com/mirkobrombin/go-wormhole/pkg/context"
+import wh "github.com/fabricatorsltd/go-wormhole/pkg/context"
 
 ctx := wh.New(provider,
     wh.WithReadRetry(

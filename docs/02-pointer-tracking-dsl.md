@@ -150,7 +150,7 @@ Produces: `WHERE ("role" = ? OR "role" = ?)`
 For fully type-safe return values, use the generic functions:
 
 ```go
-import wh "github.com/mirkobrombin/go-wormhole/pkg/context"
+import wh "github.com/fabricatorsltd/go-wormhole/pkg/context"
 
 // Single entity by PK — returns *User, not any
 user, err := wh.Find[User](ctx, dbCtx, 42)

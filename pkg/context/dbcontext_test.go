@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	wctx "github.com/mirkobrombin/go-wormhole/pkg/context"
-	"github.com/mirkobrombin/go-wormhole/pkg/model"
-	"github.com/mirkobrombin/go-wormhole/pkg/provider"
-	"github.com/mirkobrombin/go-wormhole/pkg/query"
+	wctx "github.com/fabricatorsltd/go-wormhole/pkg/context"
+	"github.com/fabricatorsltd/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
+	"github.com/fabricatorsltd/go-wormhole/pkg/query"
 
 	"github.com/mirkobrombin/go-foundation/pkg/resiliency"
 )

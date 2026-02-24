@@ -9,8 +9,8 @@ import (
 
 	_ "github.com/glebarez/sqlite"
 
-	"github.com/mirkobrombin/go-wormhole/pkg/migrations"
-	"github.com/mirkobrombin/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/pkg/migrations"
+	"github.com/fabricatorsltd/go-wormhole/pkg/model"
 )
 
 func openTestDB(t *testing.T) *sql.DB {
