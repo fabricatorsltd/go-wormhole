@@ -6,15 +6,15 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/mirkobrombin/go-slipstream/pkg/engine"
-	"github.com/mirkobrombin/go-slipstream/pkg/tx"
-	"github.com/mirkobrombin/go-slipstream/pkg/wal"
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
 	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
 	"github.com/fabricatorsltd/go-wormhole/pkg/query"
+	"github.com/mirkobrombin/go-slipstream/pkg/engine"
+	"github.com/mirkobrombin/go-slipstream/pkg/tx"
+	"github.com/mirkobrombin/go-slipstream/pkg/wal"
 )
 
-// record is the storage unit: a map of field→value pairs.
+// record is the storage unit: a map of column→value pairs.
 type record = map[string]any
 
 // Provider implements provider.Provider on top of a go-slipstream Engine.
@@ -27,6 +27,14 @@ type Provider struct {
 }
 
 var _ provider.Provider = (*Provider)(nil)
+
+var slipstreamCapabilities = provider.Capabilities{
+	Transactions:     true,
+	PartialUpdate:    true,
+	OffsetPagination: true,
+	NestedFilters:    true,
+	SchemaEvolution:  true,
+}
 
 // New creates a Slipstream provider that persists data under dataDir.
 func New(dataDir string, opts ...engine.Option[record]) (*Provider, error) {
@@ -53,6 +61,10 @@ func New(dataDir string, opts ...engine.Option[record]) (*Provider, error) {
 func (p *Provider) Engine() *engine.Engine[record] { return p.eng }
 
 func (p *Provider) Name() string { return "slipstream" }
+
+func (p *Provider) Capabilities() provider.Capabilities {
+	return slipstreamCapabilities
+}
 
 func (p *Provider) Open(_ context.Context, _ string) error {
 	// engine is already open from New()
@@ -84,10 +96,7 @@ func (p *Provider) Update(ctx context.Context, meta *model.EntityMeta, entity an
 		return fmt.Errorf("read before update: %w", err)
 	}
 
-	changedSet := make(map[string]struct{}, len(changed))
-	for _, c := range changed {
-		changedSet[c] = struct{}{}
-	}
+	changedSet := changedColumns(meta, changed)
 	for k, v := range rec {
 		if _, ok := changedSet[k]; ok {
 			existing[k] = v
@@ -114,6 +123,9 @@ func (p *Provider) Find(ctx context.Context, meta *model.EntityMeta, pkValue any
 // --- Query ---
 
 func (p *Provider) Execute(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error {
+	if err := provider.ValidateQueryCapabilities(p.Capabilities(), q); err != nil {
+		return err
+	}
 	return p.executeQuery(ctx, meta, q, dest)
 }
 
@@ -151,10 +163,7 @@ func (t *slipTx) Update(ctx context.Context, meta *model.EntityMeta, entity any,
 		return fmt.Errorf("tx read before update: %w", err)
 	}
 
-	changedSet := make(map[string]struct{}, len(changed))
-	for _, c := range changed {
-		changedSet[c] = struct{}{}
-	}
+	changedSet := changedColumns(meta, changed)
 	for k, v := range rec {
 		if _, ok := changedSet[k]; ok {
 			existing[k] = v
@@ -179,6 +188,9 @@ func (t *slipTx) Find(ctx context.Context, meta *model.EntityMeta, pkValue any, 
 }
 
 func (t *slipTx) Execute(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error {
+	if err := provider.ValidateQueryCapabilities(slipstreamCapabilities, q); err != nil {
+		return err
+	}
 	return executeQueryOnEngine(ctx, t.eng, nil, meta, q, dest)
 }
 
@@ -195,7 +207,7 @@ func toRecord(meta *model.EntityMeta, entity any) (record, any) {
 	var pk any
 	for _, f := range meta.Fields {
 		v := val.FieldByName(f.FieldName).Interface()
-		rec[f.FieldName] = v
+		rec[f.Column] = v
 		if f.PrimaryKey {
 			pk = v
 		}
@@ -212,7 +224,7 @@ func fromRecord(meta *model.EntityMeta, rec record, dest any) error {
 	val = val.Elem()
 
 	for _, f := range meta.Fields {
-		rv, ok := rec[f.FieldName]
+		rv, ok := rec[f.Column]
 		if !ok {
 			continue
 		}
@@ -251,7 +263,7 @@ func setField(fv reflect.Value, rv any) {
 }
 
 // AddEntityIndex registers a secondary index on the underlying engine
-// for a given entity field.
+// for a given entity column name.
 func (p *Provider) AddEntityIndex(meta *model.EntityMeta, fieldName string) {
 	idxName := meta.Name + "." + fieldName
 	p.eng.AddIndex(idxName, func(r record) string {
@@ -267,6 +279,18 @@ func (p *Provider) AddEntityIndex(meta *model.EntityMeta, fieldName string) {
 func (p *Provider) HasIndex(name string) bool {
 	_, ok := p.indices[name]
 	return ok
+}
+
+func changedColumns(meta *model.EntityMeta, changed []string) map[string]struct{} {
+	out := make(map[string]struct{}, len(changed))
+	for _, name := range changed {
+		if f := meta.Field(name); f != nil {
+			out[f.Column] = struct{}{}
+			continue
+		}
+		out[name] = struct{}{}
+	}
+	return out
 }
 
 // executeQuery is the Provider-aware entry point that can check registered indices.
@@ -353,7 +377,7 @@ func scanInto(recs []record, meta *model.EntityMeta, q query.Query, dest any) er
 		target := elem.Elem()
 
 		for _, f := range meta.Fields {
-			rv, ok := rec[f.FieldName]
+			rv, ok := rec[f.Column]
 			if !ok {
 				continue
 			}

@@ -3,10 +3,25 @@
 `go-wormhole` supports multiple storage backends through the `Provider`
 interface. Each backend translates the neutral AST into native operations.
 
-Currently two providers are built-in:
+Currently four providers are built-in:
 
 - **SQL Provider** — any `database/sql`-compatible driver (PostgreSQL, SQLite, MySQL)
+- **Mongo Provider** — document NoSQL provider based on MongoDB
 - **Slipstream Provider** — embedded NoSQL using `go-slipstream` (Bitcask engine)
+- **MemDoc Provider** — deterministic in-memory document provider (tests/local)
+
+## Capability Matrix
+
+| Capability | SQL | Slipstream | Mongo | MemDoc |
+|---|---:|---:|---:|---:|
+| Transactions | ✅ | ✅ | ✅ | ✅ |
+| Partial update | ✅ | ✅ | ✅ | ✅ |
+| Sorting | ✅ | ❌ | ✅ | ❌ |
+| Offset pagination | ✅ | ✅ | ✅ | ✅ |
+| Nested filters | ✅ | ✅ | ✅ | ✅ |
+| Relation includes (joins/lookup) | ✅ | ❌ | ❌ | ❌ |
+| Schema migrations | ✅ | ❌ | ❌ | ❌ |
+| Schema evolution | ❌ | ✅ | ✅ | ✅ |
 
 
 ## Provider Interface
@@ -153,6 +168,36 @@ Use `MySQLDialect` for migrations (backtick quoting, AUTO_INCREMENT).
 
 ---
 
+## Mongo Provider (NoSQL)
+
+The Mongo provider translates Wormhole's query AST to BSON filters and
+MongoDB find options.
+
+### Setup
+
+```go
+import (
+    "context"
+
+    "github.com/fabricatorsltd/go-wormhole/pkg/mongo"
+    "github.com/fabricatorsltd/go-wormhole/pkg/provider"
+)
+
+p := mongo.New(nil, "app")
+_ = p.Open(context.Background(), "mongodb://localhost:27017")
+provider.Register("mongo", p)
+provider.SetDefault("mongo")
+```
+
+### Current Scope
+
+- CRUD
+- AST filter translation (`=`, `!=`, `>`, `>=`, `<`, `<=`, `IN`, `LIKE`, `IS NULL`)
+- Sorting + limit/offset
+- Provider transactions
+
+---
+
 ## Slipstream Provider (NoSQL)
 
 The Slipstream provider uses `go-slipstream` — a high-performance,
@@ -172,13 +217,13 @@ provider.Register("slipstream", p)
 ### How It Works
 
 - Entities are serialized as **JSON maps** (`map[string]any`)
-- Keys follow the pattern `{tableName}#{pkValue}`
+- Keys follow the pattern `{tableName}:{pkValue}`
 - Queries use secondary indexes when available, otherwise in-memory scan
 
 ```
 Storage layout:
-  users#1  →  {"id":1, "name":"Alice", "age":30}
-  users#2  →  {"id":2, "name":"Bob",   "age":25}
+  users:1  →  {"id":1, "name":"Alice", "age":30}
+  users:2  →  {"id":2, "name":"Bob",   "age":25}
 ```
 
 ### Secondary Indexes
@@ -206,6 +251,48 @@ Queries on indexed fields use `GetByIndex()` instead of full scan.
 | Multi-user web app           | ❌ Use SQL     |
 | Complex JOINs / aggregations | ❌ Use SQL     |
 
+
+---
+
+## MemDoc Provider (NoSQL)
+
+MemDoc is an **in-memory**, document-style provider intended for deterministic tests and local runs.
+
+Scope:
+- CRUD
+- AST filtering + limit/offset
+- Partial updates
+- Provider transactions
+
+Non-goals:
+- Sorting
+- Relation includes
+
+### Setup
+
+```go
+import (
+    "context"
+
+    "github.com/fabricatorsltd/go-wormhole/pkg/memdoc"
+    "github.com/fabricatorsltd/go-wormhole/pkg/provider"
+)
+
+p := memdoc.New()
+_ = p.Open(context.Background(), "")
+provider.Register("memdoc", p)
+```
+
+---
+
+## Capability Matrix
+
+| Provider   | Transactions | Partial Update | Sorting | Offset | Includes/Aggregations | Schema Migrations | Schema Evolution |
+|------------|--------------|----------------|---------|--------|------------------------|-------------------|------------------|
+| SQL        | ✅           | ✅             | ✅      | ✅     | ❌                     | ✅                | ❌               |
+| Mongo      | ✅           | ✅             | ✅      | ✅     | ❌                     | ❌                | ✅               |
+| Slipstream | ✅           | ✅             | ❌      | ✅     | ❌                     | ❌                | ✅               |
+| MemDoc     | ✅           | ✅             | ❌      | ✅     | ❌                     | ❌                | ✅               |
 
 ---
 
