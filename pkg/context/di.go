@@ -2,7 +2,7 @@ package context
 
 import (
 	"github.com/mirkobrombin/go-foundation/pkg/di"
-	"github.com/mirkobrombin/go-wormhole/pkg/provider"
+	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
 )
 
 // RegisterServices wires the standard wormhole services into a DI container.

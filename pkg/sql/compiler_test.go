@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mirkobrombin/go-wormhole/pkg/model"
-	"github.com/mirkobrombin/go-wormhole/pkg/query"
-	wsql "github.com/mirkobrombin/go-wormhole/pkg/sql"
+	"github.com/fabricatorsltd/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/pkg/query"
+	wsql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
 )
 
 func testMeta() *model.EntityMeta {

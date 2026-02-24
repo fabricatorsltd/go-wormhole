@@ -424,7 +424,7 @@ Genera file `.go` contenenti migrazioni pre-compilate dal differ. Il codice gene
 ```go
 package migrations
 
-import "github.com/mirkobrombin/go-wormhole/pkg/migrations"
+import "github.com/fabricatorsltd/go-wormhole/pkg/migrations"
 
 func init() {
     Register(migrations.Migration{

@@ -5,8 +5,8 @@ import (
 	"reflect"
 
 	"github.com/mirkobrombin/go-foundation/pkg/safemap"
-	"github.com/mirkobrombin/go-wormhole/pkg/model"
-	"github.com/mirkobrombin/go-wormhole/pkg/schema"
+	"github.com/fabricatorsltd/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
 )
 
 // Tracker implements the Identity Map and change-detection logic

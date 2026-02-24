@@ -5,7 +5,7 @@ Install `go-wormhole` and write your first query in 3 steps.
 ## Installation
 
 ```bash
-go get github.com/mirkobrombin/go-wormhole@latest
+go get github.com/fabricatorsltd/go-wormhole@latest
 ```
 
 ## Step 1 — Define Your Entity
@@ -50,8 +50,8 @@ import (
 
     _ "github.com/lib/pq" // or github.com/glebarez/sqlite
 
-    "github.com/mirkobrombin/go-wormhole/pkg/dsl"
-    wormholesql "github.com/mirkobrombin/go-wormhole/pkg/sql"
+    "github.com/fabricatorsltd/go-wormhole/pkg/dsl"
+    wormholesql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
 )
 
 func init() {
@@ -78,10 +78,10 @@ func main() {
 
 ```go
 import (
-    wh "github.com/mirkobrombin/go-wormhole/pkg/context"
-    "github.com/mirkobrombin/go-wormhole/pkg/dsl"
-    "github.com/mirkobrombin/go-wormhole/pkg/provider"
-    "github.com/mirkobrombin/go-wormhole/pkg/query"
+    wh "github.com/fabricatorsltd/go-wormhole/pkg/context"
+    "github.com/fabricatorsltd/go-wormhole/pkg/dsl"
+    "github.com/fabricatorsltd/go-wormhole/pkg/provider"
+    "github.com/fabricatorsltd/go-wormhole/pkg/query"
 )
 
 func handler() {

@@ -3,7 +3,7 @@ package migrations
 import (
 	"reflect"
 
-	"github.com/mirkobrombin/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/pkg/model"
 )
 
 // ComputeDiff compares target models (from Go structs) against the

@@ -1,7 +1,7 @@
 # Relazione Completa — go-wormhole v1.0
 
 **Progetto:** `go-wormhole` — Entity Framework-inspired ORM per Go  
-**Repository:** `github.com/mirkobrombin/go-wormhole`  
+**Repository:** `github.com/fabricatorsltd/go-wormhole`  
 **Data:** 2026-02-20  
 **Stato:** ✅ Completo — 71 test PASS, 0 warning  
 **LOC totali:** 6.067 (4.116 sorgente + 1.951 test)  

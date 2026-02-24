@@ -9,12 +9,12 @@ import (
 
 	_ "github.com/glebarez/sqlite"
 
-	wctx "github.com/mirkobrombin/go-wormhole/pkg/context"
-	"github.com/mirkobrombin/go-wormhole/pkg/dsl"
-	"github.com/mirkobrombin/go-wormhole/pkg/model"
-	"github.com/mirkobrombin/go-wormhole/pkg/query"
-	"github.com/mirkobrombin/go-wormhole/pkg/schema"
-	wsql "github.com/mirkobrombin/go-wormhole/pkg/sql"
+	wctx "github.com/fabricatorsltd/go-wormhole/pkg/context"
+	"github.com/fabricatorsltd/go-wormhole/pkg/dsl"
+	"github.com/fabricatorsltd/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/pkg/query"
+	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
+	wsql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
 
 	"github.com/mirkobrombin/go-foundation/pkg/resiliency"
 )

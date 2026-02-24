@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/mirkobrombin/go-wormhole/pkg/model"
-	"github.com/mirkobrombin/go-wormhole/pkg/provider"
-	"github.com/mirkobrombin/go-wormhole/pkg/query"
-	"github.com/mirkobrombin/go-wormhole/pkg/schema"
+	"github.com/fabricatorsltd/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
+	"github.com/fabricatorsltd/go-wormhole/pkg/query"
+	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
 )
 
 // EntitySet provides a fluent API for querying and managing entities

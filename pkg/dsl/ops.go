@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"unsafe"
 
-	"github.com/mirkobrombin/go-wormhole/pkg/query"
+	"github.com/fabricatorsltd/go-wormhole/pkg/query"
 )
 
 // Condition wraps a query.Predicate produced by the pointer-tracking
