@@ -747,7 +747,7 @@ c6633bf feat: Postgres/MySQL dialects, DB scaffold, snapshot rebuild
 ```
 github.com/mirkobrombin/go-foundation  v0.3.0     Primitives stdlib-only
 github.com/mirkobrombin/go-slipstream  v1.0.1     Bitcask engine
-github.com/mattn/go-sqlite3            v1.14.22   SQLite driver (test)
+github.com/glebarez/sqlite             v1.11.0    SQLite driver (test)
 Go                                     1.24.4+
 ```
 

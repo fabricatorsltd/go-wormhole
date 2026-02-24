@@ -74,13 +74,13 @@ The SQL provider translates the query AST into standard SQL and uses
 ```go
 import (
     "database/sql"
-    _ "github.com/mattn/go-sqlite3"
+    _ "github.com/glebarez/sqlite"
 
     wormholesql "github.com/mirkobrombin/go-wormhole/pkg/sql"
     "github.com/mirkobrombin/go-wormhole/pkg/provider"
 )
 
-db, _ := sql.Open("sqlite3", "app.db")
+db, _ := sql.Open("sqlite", "app.db")
 
 p := wormholesql.New(db,
     wormholesql.WithName("sqlite"),

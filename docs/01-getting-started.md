@@ -48,7 +48,7 @@ package main
 import (
     "database/sql"
 
-    _ "github.com/lib/pq" // or github.com/mattn/go-sqlite3
+    _ "github.com/lib/pq" // or github.com/glebarez/sqlite
 
     "github.com/mirkobrombin/go-wormhole/pkg/dsl"
     wormholesql "github.com/mirkobrombin/go-wormhole/pkg/sql"
@@ -62,7 +62,7 @@ func init() {
 }
 
 func main() {
-    db, _ := sql.Open("sqlite3", "app.db")
+    db, _ := sql.Open("sqlite", "app.db")
 
     // Register the SQL provider as the default backend
     wormholesql.RegisterDefault(db)

@@ -476,7 +476,7 @@ wormhole database update         — applica migrazioni pending
 | Variabile        | Default      | Descrizione                      |
 |------------------|-------------|----------------------------------|
 | `WORMHOLE_DSN`   | (required)  | Connection string del database   |
-| `WORMHOLE_DRIVER`| `sqlite3`   | Driver `database/sql`            |
+| `WORMHOLE_DRIVER`| `sqlite`    | Driver `database/sql`            |
 | `WORMHOLE_DIR`   | `./migrations` | Directory dei file `.go`      |
 
 Il comando `add` esegue `ComputeDiff` → `GenerateMigrationFile` → scrive il file su disco.
