@@ -9,9 +9,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mirkobrombin/go-wormhole/pkg/migrations"
-	"github.com/mirkobrombin/go-wormhole/pkg/model"
-	"github.com/mirkobrombin/go-wormhole/pkg/schema"
+	"github.com/fabricatorsltd/go-wormhole/pkg/migrations"
+	"github.com/fabricatorsltd/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
 )
 
 func main() {

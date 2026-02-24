@@ -3,8 +3,8 @@ package dsl_test
 import (
 	"testing"
 
-	"github.com/mirkobrombin/go-wormhole/pkg/dsl"
-	"github.com/mirkobrombin/go-wormhole/pkg/query"
+	"github.com/fabricatorsltd/go-wormhole/pkg/dsl"
+	"github.com/fabricatorsltd/go-wormhole/pkg/query"
 )
 
 type User struct {

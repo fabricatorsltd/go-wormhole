@@ -7,9 +7,9 @@ import (
 	"reflect"
 
 	"github.com/mirkobrombin/go-foundation/pkg/resiliency"
-	"github.com/mirkobrombin/go-wormhole/pkg/model"
-	"github.com/mirkobrombin/go-wormhole/pkg/provider"
-	"github.com/mirkobrombin/go-wormhole/pkg/query"
+	"github.com/fabricatorsltd/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
+	"github.com/fabricatorsltd/go-wormhole/pkg/query"
 )
 
 // QueryLogger is called before every SQL execution with the compiled

@@ -1,4 +1,4 @@
-module github.com/mirkobrombin/go-wormhole
+module github.com/fabricatorsltd/go-wormhole
 
 go 1.24.4
 

@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/mirkobrombin/go-foundation/pkg/tags"
-	"github.com/mirkobrombin/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/pkg/model"
 )
 
 const tagName = "db"

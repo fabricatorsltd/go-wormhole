@@ -44,8 +44,8 @@ registry:
 
 ```go
 import (
-    "github.com/mirkobrombin/go-wormhole/pkg/provider"
-    wormholesql "github.com/mirkobrombin/go-wormhole/pkg/sql"
+    "github.com/fabricatorsltd/go-wormhole/pkg/provider"
+    wormholesql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
 )
 
 // Register by name
@@ -76,8 +76,8 @@ import (
     "database/sql"
     _ "github.com/glebarez/sqlite"
 
-    wormholesql "github.com/mirkobrombin/go-wormhole/pkg/sql"
-    "github.com/mirkobrombin/go-wormhole/pkg/provider"
+    wormholesql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
+    "github.com/fabricatorsltd/go-wormhole/pkg/provider"
 )
 
 db, _ := sql.Open("sqlite", "app.db")
@@ -161,7 +161,7 @@ embedded Bitcask key-value engine.
 ### Setup
 
 ```go
-import "github.com/mirkobrombin/go-wormhole/pkg/slipstream"
+import "github.com/fabricatorsltd/go-wormhole/pkg/slipstream"
 
 p, err := slipstream.New("./data",
     engine.WithSyncWrites(true),
@@ -226,7 +226,7 @@ cacheCtx := wh.New(provider.MustResolve("cache"))
 Or use the DI container:
 
 ```go
-import whctx "github.com/mirkobrombin/go-wormhole/pkg/context"
+import whctx "github.com/fabricatorsltd/go-wormhole/pkg/context"
 
 container := di.New()
 whctx.RegisterServices(container, sqlProv,
