@@ -79,7 +79,7 @@ Dialects: default, postgres, mysql, mssql
 
 Environment:
   WORMHOLE_DSN      Database connection string (required for database commands)
-  WORMHOLE_DRIVER   SQL driver name (default: sqlite3)
+  WORMHOLE_DRIVER   SQL driver name (default: sqlite)
   WORMHOLE_DIR      Migrations directory (default: ./migrations)`)
 }
 
@@ -312,7 +312,7 @@ func migrationsDir() string {
 func openDB() *sql.DB {
 	driver := os.Getenv("WORMHOLE_DRIVER")
 	if driver == "" {
-		driver = "sqlite3"
+		driver = "sqlite"
 	}
 	dsn := os.Getenv("WORMHOLE_DSN")
 	if dsn == "" {

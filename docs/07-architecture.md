@@ -188,7 +188,7 @@ use cases.
 go-wormhole
 ├── github.com/mirkobrombin/go-foundation v0.3.0    (core primitives)
 ├── github.com/mirkobrombin/go-slipstream v1.0.1    (NoSQL engine)
-└── github.com/mattn/go-sqlite3 v1.14.22            (test only)
+└── github.com/glebarez/sqlite v1.11.0              (test only)
 ```
 
 Go version: **1.24.4+** (requires generics + `unsafe.Pointer` arithmetic).
