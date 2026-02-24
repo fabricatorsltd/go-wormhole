@@ -11,6 +11,8 @@ import (
 
 	"github.com/fabricatorsltd/go-wormhole/pkg/migrations"
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/pkg/mongo"
+	"github.com/fabricatorsltd/go-wormhole/pkg/nosqlmigrations"
 	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
 )
 
@@ -61,6 +63,22 @@ func main() {
 			printUsage()
 			os.Exit(1)
 		}
+	case "nosql-migrations":
+		if len(os.Args) < 3 {
+			printUsage()
+			os.Exit(1)
+		}
+		switch os.Args[2] {
+		case "generate":
+			cmdNoSQLMigrationsGenerate()
+		case "list":
+			cmdNoSQLMigrationsList()
+		case "apply":
+			cmdNoSQLMigrationsApply()
+		default:
+			printUsage()
+			os.Exit(1)
+		}
 	default:
 		printUsage()
 		os.Exit(1)
@@ -74,13 +92,20 @@ func printUsage() {
   wormhole migrations list                     List pending migrations
   wormhole database update                     Apply pending migrations
   wormhole dbcontext scaffold                  Generate Go structs from existing database
+  wormhole nosql-migrations generate <Name>    Generate NoSQL evolution script
+  wormhole nosql-migrations list               List NoSQL evolution scripts
+  wormhole nosql-migrations apply              Apply pending NoSQL evolution scripts
 
 Dialects: default, postgres, mysql, mssql
 
 Environment:
   WORMHOLE_DSN      Database connection string (required for database commands)
   WORMHOLE_DRIVER   SQL driver name (default: sqlite)
-  WORMHOLE_DIR      Migrations directory (default: ./migrations)`)
+  WORMHOLE_DIR      Migrations directory (default: ./migrations)
+  WORMHOLE_NOSQL_PROVIDER NoSQL backend (default: mongo)
+  WORMHOLE_NOSQL_DSN      NoSQL connection string (required for apply)
+  WORMHOLE_NOSQL_DB       NoSQL database name (required for apply)
+  WORMHOLE_NOSQL_DIR      NoSQL scripts directory (default: ./nosql-migrations)`)
 }
 
 func cmdMigrationsAdd() {
@@ -300,6 +325,95 @@ func cmdScaffold() {
 	fmt.Printf("\nScaffolded %d table(s) into %s/\n", len(results), outDir)
 }
 
+func cmdNoSQLMigrationsGenerate() {
+	if len(os.Args) < 4 {
+		fmt.Fprintln(os.Stderr, "Usage: wormhole nosql-migrations generate <Name>")
+		os.Exit(1)
+	}
+	dir := nosqlMigrationsDir()
+	s := nosqlmigrations.GenerateTemplate(os.Args[3])
+	path, err := nosqlmigrations.SaveScript(dir, s)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "save script: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Created NoSQL script: %s\n", path)
+}
+
+func cmdNoSQLMigrationsList() {
+	dir := nosqlMigrationsDir()
+	scripts, err := nosqlmigrations.LoadScripts(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "load scripts: %v\n", err)
+		os.Exit(1)
+	}
+	if len(scripts) == 0 {
+		fmt.Println("No NoSQL migration scripts found.")
+		return
+	}
+	history := nosqlmigrations.NewFileHistoryStore(filepath.Join(dir, ".history.json"))
+	applied, err := history.AppliedSet(context.Background())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "load history: %v\n", err)
+		os.Exit(1)
+	}
+	for _, s := range scripts {
+		status := "pending"
+		if applied[s.ID] {
+			status = "applied"
+		}
+		fmt.Printf("  [%s] %s (%s)\n", status, s.ID, s.Name)
+	}
+}
+
+func cmdNoSQLMigrationsApply() {
+	dir := nosqlMigrationsDir()
+	scripts, err := nosqlmigrations.LoadScripts(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "load scripts: %v\n", err)
+		os.Exit(1)
+	}
+	if len(scripts) == 0 {
+		fmt.Println("No NoSQL migration scripts found.")
+		return
+	}
+
+	providerName := os.Getenv("WORMHOLE_NOSQL_PROVIDER")
+	if providerName == "" {
+		providerName = "mongo"
+	}
+
+	var exec nosqlmigrations.Executor
+	switch providerName {
+	case "mongo":
+		dsn := os.Getenv("WORMHOLE_NOSQL_DSN")
+		dbName := os.Getenv("WORMHOLE_NOSQL_DB")
+		if dsn == "" || dbName == "" {
+			fmt.Fprintln(os.Stderr, "WORMHOLE_NOSQL_DSN and WORMHOLE_NOSQL_DB are required for mongo")
+			os.Exit(1)
+		}
+		p := mongo.New(nil, dbName)
+		if err := p.Open(context.Background(), dsn); err != nil {
+			fmt.Fprintf(os.Stderr, "open mongo: %v\n", err)
+			os.Exit(1)
+		}
+		defer p.Close()
+		exec = nosqlmigrations.NewMongoExecutor(p.Database())
+	default:
+		fmt.Fprintf(os.Stderr, "unsupported NoSQL provider: %s\n", providerName)
+		os.Exit(1)
+	}
+
+	history := nosqlmigrations.NewFileHistoryStore(filepath.Join(dir, ".history.json"))
+	runner := nosqlmigrations.NewRunner(exec, history)
+	applied, err := runner.ApplyPending(context.Background(), scripts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "apply NoSQL migrations: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Applied NoSQL scripts: %d\n", applied)
+}
+
 // --- helpers ---
 
 func migrationsDir() string {
@@ -307,6 +421,13 @@ func migrationsDir() string {
 		return d
 	}
 	return "./migrations"
+}
+
+func nosqlMigrationsDir() string {
+	if d := os.Getenv("WORMHOLE_NOSQL_DIR"); d != "" {
+		return d
+	}
+	return "./nosql-migrations"
 }
 
 func openDB() *sql.DB {

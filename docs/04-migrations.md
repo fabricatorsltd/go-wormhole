@@ -216,6 +216,9 @@ building the `DatabaseSchema` from the operations.
 | `wormhole migrations list`       | Show pending/applied migrations      |
 | `wormhole database update`       | Apply pending migrations             |
 | `wormhole dbcontext scaffold`    | Reverse-engineer DB → Go structs     |
+| `wormhole nosql-migrations generate <Name>` | Generate NoSQL evolution script |
+| `wormhole nosql-migrations list` | Show pending/applied NoSQL scripts   |
+| `wormhole nosql-migrations apply`| Apply pending NoSQL scripts          |
 
 ### Environment Variables
 
@@ -224,3 +227,21 @@ building the `DatabaseSchema` from the operations.
 | `WORMHOLE_DSN`    | —         | Database connection string |
 | `WORMHOLE_DRIVER` | `sqlite` | SQL driver name            |
 | `WORMHOLE_DIR`    | `./migrations` | Migration files dir   |
+| `WORMHOLE_NOSQL_PROVIDER` | `mongo` | NoSQL backend for evolution |
+| `WORMHOLE_NOSQL_DSN`      | —       | NoSQL connection string (apply) |
+| `WORMHOLE_NOSQL_DB`       | —       | NoSQL database name (apply) |
+| `WORMHOLE_NOSQL_DIR`      | `./nosql-migrations` | NoSQL script directory |
+
+## NoSQL Schema Evolution
+
+NoSQL scripts are JSON files (`*.nosql.json`) applied in lexical order, with local
+history tracking in `.history.json` under `WORMHOLE_NOSQL_DIR`.
+
+Supported step types:
+
+- `backfill_field`
+- `rename_field`
+- `split_field`
+- `merge_fields`
+- `create_index`
+- `drop_index`
