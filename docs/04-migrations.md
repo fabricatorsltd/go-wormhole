@@ -222,5 +222,5 @@ building the `DatabaseSchema` from the operations.
 | Variable          | Default   | Description                |
 |-------------------|-----------|----------------------------|
 | `WORMHOLE_DSN`    | —         | Database connection string |
-| `WORMHOLE_DRIVER` | `sqlite3` | SQL driver name            |
+| `WORMHOLE_DRIVER` | `sqlite` | SQL driver name            |
 | `WORMHOLE_DIR`    | `./migrations` | Migration files dir   |
