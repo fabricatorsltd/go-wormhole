@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/mirkobrombin/go-foundation/pkg/resiliency"
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
 	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
 	"github.com/fabricatorsltd/go-wormhole/pkg/query"
+	"github.com/mirkobrombin/go-foundation/pkg/resiliency"
 )
 
 // QueryLogger is called before every SQL execution with the compiled
@@ -90,6 +90,18 @@ func (p *Provider) logQuery(c Compiled) {
 }
 
 func (p *Provider) Name() string { return p.name }
+
+func (p *Provider) Capabilities() provider.Capabilities {
+	return provider.Capabilities{
+		Transactions:     true,
+		Aggregations:     true,
+		NestedFilters:    true,
+		PartialUpdate:    true,
+		Sorting:          true,
+		OffsetPagination: true,
+		SchemaMigrations: true,
+	}
+}
 
 func (p *Provider) Open(ctx context.Context, dsn string) error {
 	return p.db.PingContext(ctx)
@@ -174,6 +186,9 @@ func (p *Provider) Find(ctx context.Context, meta *model.EntityMeta, pkValue any
 // --- Query ---
 
 func (p *Provider) Execute(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error {
+	if err := provider.ValidateQueryCapabilities(p.Capabilities(), q); err != nil {
+		return err
+	}
 	c := p.compiler.Select(meta, q)
 	p.logQuery(c)
 	return p.retryDo(ctx, func() error {

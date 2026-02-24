@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
 	"github.com/fabricatorsltd/go-wormhole/pkg/query"
@@ -72,4 +73,48 @@ type QueryExplainer interface {
 	ExplainInsert(meta *model.EntityMeta, entity any) CompiledQuery
 	ExplainUpdate(meta *model.EntityMeta, entity any, changed []string) CompiledQuery
 	ExplainDelete(meta *model.EntityMeta, pkValue any) CompiledQuery
+}
+
+// Capabilities describes what a backend can do natively.
+// Providers can expose these flags via CapabilityReporter.
+type Capabilities struct {
+	Transactions     bool
+	Aggregations     bool
+	NestedFilters    bool
+	PartialUpdate    bool
+	Sorting          bool
+	OffsetPagination bool
+	CursorPagination bool
+	SchemaMigrations bool
+	SchemaEvolution  bool
+}
+
+// CapabilityReporter is an optional interface for providers that
+// publish backend capabilities.
+type CapabilityReporter interface {
+	Capabilities() Capabilities
+}
+
+// DetectCapabilities returns provider capabilities when exposed.
+// If unsupported, it returns the zero-value capability set.
+func DetectCapabilities(p Provider) Capabilities {
+	if c, ok := p.(CapabilityReporter); ok {
+		return c.Capabilities()
+	}
+	return Capabilities{}
+}
+
+// ValidateQueryCapabilities verifies whether the query shape is supported
+// by the provided capability set.
+func ValidateQueryCapabilities(c Capabilities, q query.Query) error {
+	if len(q.OrderBy) > 0 && !c.Sorting {
+		return fmt.Errorf("provider does not support sorting")
+	}
+	if q.Offset > 0 && !c.OffsetPagination {
+		return fmt.Errorf("provider does not support offset pagination")
+	}
+	if len(q.Includes) > 0 && !c.Aggregations {
+		return fmt.Errorf("provider does not support relation includes")
+	}
+	return nil
 }
