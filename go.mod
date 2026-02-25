@@ -2,6 +2,8 @@ module github.com/fabricatorsltd/go-wormhole
 
 go 1.24.4
 
+replace github.com/mirkobrombin/go-foundation => ../go-foundation
+
 require (
 	github.com/glebarez/sqlite v1.11.0
 	github.com/mirkobrombin/go-foundation v0.3.0

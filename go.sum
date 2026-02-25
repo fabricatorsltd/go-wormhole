@@ -56,8 +56,6 @@ github.com/mattn/go-isatty v0.0.17 h1:BTarxUcIeDqL27Mc+vyvdWYSL28zpIhv3RoTdsLMPn
 github.com/mattn/go-isatty v0.0.17/go.mod h1:kYGgaQfpe5nmfYZH+SKPsOc2e4SrIfOl2e/yFXSvRLM=
 github.com/matttproud/golang_protobuf_extensions v1.0.4 h1:mmDVorXM7PCGKw94cs5zkfA9PSy5pEvNWRP0ET0TIVo=
 github.com/matttproud/golang_protobuf_extensions v1.0.4/go.mod h1:BSXmuO+STAnVfrANrmjBb36TMTDstsz7MSK+HVaYKv4=
-github.com/mirkobrombin/go-foundation v0.3.0 h1:tOVNLd6zYCG0z9tKAudmlDjJBYLITEEk6VBiAF8fXeM=
-github.com/mirkobrombin/go-foundation v0.3.0/go.mod h1:ScQBotKzuC5Lxi61Wyw0h8NaeGKsuwp4xHwPj5Mj9DY=
 github.com/mirkobrombin/go-slipstream v1.0.1 h1:sIWmUsPsUj+LYyCZ6wvqtNDn0lfCwJR3xTXDZWuLaVU=
 github.com/mirkobrombin/go-slipstream v1.0.1/go.mod h1:eRlC73o3VAYqmfG8K6pVcXYZ/PmIwa7AaC4CayjahKg=
 github.com/mirkobrombin/go-warp v1.0.0 h1:vpkuaDyzFAC2AR8NelhZaNAGHuy8CLDPhbfLpTD6A24=
