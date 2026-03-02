@@ -36,6 +36,7 @@ ctx.Save()  // → UPDATE "users" SET "age" = ? WHERE "id" = ?
 | [05 — Providers](docs/05-providers.md) | SQL provider, Slipstream, multi-backend setup |
 | [06 — Resilience](docs/06-resilience.md) | Retry, circuit breaker, MultiError |
 | [07 — Architecture](docs/07-architecture.md) | Internals, data flows, design decisions |
+| [08 — Relationships](docs/08-relationships.md) | 1:1, 1:N, N:M declarations, eager loading with Include |
 
 ## License
 

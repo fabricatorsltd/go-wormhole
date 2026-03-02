@@ -7,10 +7,12 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/fabricatorsltd/go-wormhole/pkg/util"
 )
 
 func GenerateTemplate(name string) Script {
-	id := time.Now().UTC().Format("20060102150405") + "_" + toSnake(name)
+	id := time.Now().UTC().Format("20060102150405") + "_" + util.ToSnake(name)
 	return Script{
 		ID:        id,
 		Name:      name,
@@ -66,9 +68,4 @@ func LoadScripts(dir string) ([]Script, error) {
 	return out, nil
 }
 
-func toSnake(s string) string {
-	s = strings.TrimSpace(strings.ToLower(s))
-	s = strings.ReplaceAll(s, " ", "_")
-	s = strings.ReplaceAll(s, "-", "_")
-	return s
-}
+

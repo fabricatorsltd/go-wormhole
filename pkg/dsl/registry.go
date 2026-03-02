@@ -7,6 +7,8 @@ import (
 	"unsafe"
 
 	"github.com/mirkobrombin/go-foundation/pkg/tags"
+	"github.com/fabricatorsltd/go-wormhole/pkg/provider" // New import
+	"github.com/fabricatorsltd/go-wormhole/pkg/util"
 )
 
 // fieldInfo maps a memory offset to the field's identity.
@@ -41,7 +43,7 @@ func init() {
 // builds the offset→field mapping used by the pointer-tracking DSL.
 // All exported fields are registered; db tags provide optional column overrides.
 // Call once at boot for every domain entity.
-func Register(v any) {
+func Register(v any, dialect provider.Dialect) {
 	t := reflect.TypeOf(v)
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
@@ -65,7 +67,7 @@ func Register(v any) {
 			continue
 		}
 
-		col := toSnake(sf.Name)
+		col := dialect.ColumnName(sf.Name)
 
 		tagStr := sf.Tag.Get("db")
 		if tagStr != "" {
@@ -91,7 +93,7 @@ func Register(v any) {
 // MustRegister is like Register but also returns the zero-value pointer
 // for chaining: `u := dsl.MustRegister(&User{})`.
 func MustRegister[T any](v *T) *T {
-	Register(v)
+	Register(v, nil) // Pass nil for dialect for now, assuming a default or context will provide it.
 	return v
 }
 

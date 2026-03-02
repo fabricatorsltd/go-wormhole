@@ -13,7 +13,9 @@ import (
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
 	"github.com/fabricatorsltd/go-wormhole/pkg/mongo"
 	"github.com/fabricatorsltd/go-wormhole/pkg/nosqlmigrations"
+	"github.com/fabricatorsltd/go-wormhole/pkg/provider" // New import
 	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
+	sqlprovider "github.com/fabricatorsltd/go-wormhole/pkg/sql" // New import with alias
 )
 
 func main() {
@@ -47,6 +49,8 @@ func main() {
 		switch os.Args[2] {
 		case "update":
 			cmdDatabaseUpdate()
+		case "sync":
+			cmdDBSync()
 		default:
 			printUsage()
 			os.Exit(1)
@@ -91,6 +95,7 @@ func printUsage() {
   wormhole migrations script <Name> [dialect]  Export migration as .sql file
   wormhole migrations list                     List pending migrations
   wormhole database update                     Apply pending migrations
+  wormhole database sync <src_prov> <dst_prov> Synchronize data between providers
   wormhole dbcontext scaffold                  Generate Go structs from existing database
   wormhole nosql-migrations generate <Name>    Generate NoSQL evolution script
   wormhole nosql-migrations list               List NoSQL evolution scripts
@@ -99,13 +104,19 @@ func printUsage() {
 Dialects: default, postgres, mysql, mssql
 
 Environment:
-  WORMHOLE_DSN      Database connection string (required for database commands)
-  WORMHOLE_DRIVER   SQL driver name (default: sqlite)
-  WORMHOLE_DIR      Migrations directory (default: ./migrations)
-  WORMHOLE_NOSQL_PROVIDER NoSQL backend (default: mongo)
-  WORMHOLE_NOSQL_DSN      NoSQL connection string (required for apply)
-  WORMHOLE_NOSQL_DB       NoSQL database name (required for apply)
-  WORMHOLE_NOSQL_DIR      NoSQL scripts directory (default: ./nosql-migrations)`)
+  WORMHOLE_DSN               Database connection string (required for database commands)
+  WORMHOLE_DRIVER            SQL driver name (default: sqlite)
+  WORMHOLE_DIR               Migrations directory (default: ./migrations)
+  WORMHOLE_NOSQL_PROVIDER    NoSQL backend (default: mongo)
+  WORMHOLE_NOSQL_DSN         NoSQL connection string (required for apply)
+  WORMHOLE_NOSQL_DB          NoSQL database name (required for apply)
+  WORMHOLE_NOSQL_DIR         NoSQL scripts directory (default: ./nosql-migrations)
+  WORMHOLE_SOURCE_DSN        Source database connection string (required for db sync)
+  WORMHOLE_SOURCE_DRIVER     Source SQL driver name (default: sqlite)
+  WORMHOLE_SOURCE_DB         Source NoSQL database name (required for mongo source)
+  WORMHOLE_DESTINATION_DSN   Destination database connection string (required for db sync)
+  WORMHOLE_DESTINATION_DRIVER Destination SQL driver name (default: sqlite)
+  WORMHOLE_DESTINATION_DB    Destination NoSQL database name (required for mongo destination)`)
 }
 
 func cmdMigrationsAdd() {
@@ -412,6 +423,77 @@ func cmdNoSQLMigrationsApply() {
 		os.Exit(1)
 	}
 	fmt.Printf("Applied NoSQL scripts: %d\n", applied)
+}
+
+func cmdDBSync() {
+	if len(os.Args) < 4 {
+		fmt.Fprintln(os.Stderr, "Usage: wormhole database sync <source_provider> <destination_provider>")
+		os.Exit(1)
+	}
+
+	sourceProviderName := os.Args[3]
+	destinationProviderName := os.Args[4]
+
+	ctx := context.Background()
+
+	sourceProvider, err := newProvider(ctx, sourceProviderName, "WORMHOLE_SOURCE_DSN", "WORMHOLE_SOURCE_DRIVER", "WORMHOLE_SOURCE_DB")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create source provider: %v\n", err)
+		os.Exit(1)
+	}
+	defer sourceProvider.Close()
+
+	destinationProvider, err := newProvider(ctx, destinationProviderName, "WORMHOLE_DESTINATION_DSN", "WORMHOLE_DESTINATION_DRIVER", "WORMHOLE_DESTINATION_DB")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create destination provider: %v\n", err)
+		os.Exit(1)
+	}
+	defer destinationProvider.Close()
+
+	// For now, ChangeTracker is nil. In a real scenario, this would be initialized.
+	migrator := migrations.NewDataMigrator(sourceProvider, destinationProvider, nil)
+
+	if err := migrator.FullSync(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "full synchronization failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Data synchronization completed successfully.")
+}
+
+// newProvider creates and initializes a provider based on name and environment variables.
+func newProvider(ctx context.Context, providerName, dsnEnv, driverEnv, dbNameEnv string) (provider.Provider, error) {
+	var p provider.Provider
+	switch providerName {
+	case "mongo":
+		dsn := os.Getenv(dsnEnv)
+		dbName := os.Getenv(dbNameEnv)
+		if dsn == "" || dbName == "" {
+			return nil, fmt.Errorf("%s and %s are required for mongo provider", dsnEnv, dbNameEnv)
+		}
+		mp := mongo.New(nil, dbName)
+		if err := mp.Open(ctx, dsn); err != nil {
+			return nil, fmt.Errorf("failed to open mongo provider: %w", err)
+		}
+		p = mp
+	case "sql": // Generic SQL provider, driver determined by environment
+		driver := os.Getenv(driverEnv)
+		dsn := os.Getenv(dsnEnv)
+		if dsn == "" {
+			return nil, fmt.Errorf("%s is required for sql provider", dsnEnv)
+		}
+		if driver == "" {
+			driver = "sqlite3" // Default to sqlite3 if not specified
+		}
+		sp := sqlprovider.New(driver, dsn)
+		if err := sp.Open(ctx); err != nil {
+			return nil, fmt.Errorf("failed to open sql provider: %w", err)
+		}
+		p = sp
+	default:
+		return nil, fmt.Errorf("unsupported provider: %s", providerName)
+	}
+	return p, nil
 }
 
 // --- helpers ---

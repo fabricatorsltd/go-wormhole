@@ -22,6 +22,30 @@ type Dialect interface {
 	// columns (e.g. "SERIAL" for Postgres). Return "" to keep the original type.
 	AutoIncrementType(baseType string) string
 	SupportsIfNotExists() bool
+
+	// Optional methods for dialect-specific DDL operations.
+	// These can be checked via type assertion:
+	// if d, ok := dialect.(interface{ DisableConstraints(table string) string }); ok { ... }
+
+	// DisableConstraints returns a SQL statement to disable foreign key checks
+	// or other constraints for a given table.
+	// DisableConstraints(table string) string
+
+	// EnableConstraints returns a SQL statement to enable foreign key checks
+	// or other constraints for a given table.
+	// EnableConstraints(table string) string
+
+	// SetIdentityInsert returns a SQL statement to enable or disable IDENTITY_INSERT
+	// for a given table, primarily for MSSQL.
+	// SetIdentityInsert(table string, enable bool) string
+
+	// ResetSequence returns a SQL statement to reset the sequence for an auto-increment
+	// column to its current maximum value, primarily for PostgreSQL.
+	// ResetSequence(table string, column string) string
+
+	// ColumnName returns the database column name for a given Go field name.
+	// This allows dialects to apply naming conventions (e.g., snake_case).
+	// ColumnName(fieldName string) string
 }
 
 // DefaultDialect produces standard SQL with double-quote identifiers.
@@ -31,6 +55,7 @@ func (DefaultDialect) QuoteIdent(s string) string         { return `"` + s + `"`
 func (DefaultDialect) AutoIncrementClause() string         { return "AUTOINCREMENT" }
 func (DefaultDialect) AutoIncrementType(string) string     { return "" }
 func (DefaultDialect) SupportsIfNotExists() bool           { return true }
+func (DefaultDialect) ColumnName(fieldName string) string { return strings.ToLower(fieldName) } // Default to lowercase for simple cases
 
 // NewBuilder creates a SchemaBuilder with the default dialect.
 func NewBuilder() *SchemaBuilder {

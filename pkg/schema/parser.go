@@ -7,6 +7,8 @@ import (
 
 	"github.com/mirkobrombin/go-foundation/pkg/tags"
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/pkg/provider" // New import
+	"github.com/fabricatorsltd/go-wormhole/pkg/util"
 )
 
 const tagName = "db"
@@ -26,22 +28,22 @@ func init() {
 
 // Parse inspects a struct (or pointer-to-struct) and returns its EntityMeta.
 // Results are cached per type.
-func Parse(v any) *model.EntityMeta {
+func Parse(v any, dialect provider.Dialect) *model.EntityMeta {
 	t := reflect.TypeOf(v)
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
-	return ParseType(t)
+	return ParseType(t, dialect)
 }
 
 // ParseType builds EntityMeta from a reflect.Type. Cached.
-func ParseType(t reflect.Type) *model.EntityMeta {
+func ParseType(t reflect.Type, dialect provider.Dialect) *model.EntityMeta {
 	if m, ok := cache.Load(t); ok {
 		return m.(*model.EntityMeta)
 	}
 
 	meta := &model.EntityMeta{
-		Name:   toSnake(t.Name()),
+		Name:   util.ToSnake(t.Name()),
 		GoType: t,
 	}
 
@@ -49,7 +51,8 @@ func ParseType(t reflect.Type) *model.EntityMeta {
 	for _, fm := range parsed {
 		col := fm.Get("column")
 		if col == "" {
-			col = toSnake(fm.Name)
+			sf, _ := t.FieldByName(fm.Name) // Get sf here as it's needed for dialect.ColumnName
+			col = dialect.ColumnName(sf.Name)
 		}
 
 		sf, _ := t.FieldByName(fm.Name)
@@ -82,25 +85,4 @@ func ParseType(t reflect.Type) *model.EntityMeta {
 	return meta
 }
 
-// toSnake converts CamelCase to snake_case, handling acronyms
-// like "UserID" → "user_id".
-func toSnake(s string) string {
-	var b strings.Builder
-	runes := []rune(s)
-	for i, r := range runes {
-		if r >= 'A' && r <= 'Z' {
-			if i > 0 {
-				prev := runes[i-1]
-				if prev >= 'a' && prev <= 'z' {
-					b.WriteByte('_')
-				} else if prev >= 'A' && prev <= 'Z' && i+1 < len(runes) && runes[i+1] >= 'a' && runes[i+1] <= 'z' {
-					b.WriteByte('_')
-				}
-			}
-			b.WriteRune(r + ('a' - 'A'))
-		} else {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
-}
+
