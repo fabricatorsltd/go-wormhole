@@ -21,13 +21,30 @@ type Runner struct {
 	dialect    Dialect
 }
 
+var defaultRunner = &Runner{dialect: DefaultDialect{}}
+
+// Register registers a migration with the default runner.
+func Register(m Migration) {
+	defaultRunner.Add(m)
+}
+
+// GetRegistered returns all migrations registered with the default runner.
+func GetRegistered() []Migration {
+	return defaultRunner.migrations
+}
+
 // NewRunner creates a migration runner.
+// If no migrations are provided, it uses the ones registered via Register().
 func NewRunner(db *sql.DB, dialect ...Dialect) *Runner {
 	var d Dialect = DefaultDialect{}
 	if len(dialect) > 0 {
 		d = dialect[0]
 	}
-	return &Runner{db: db, dialect: d}
+	return &Runner{
+		db:         db,
+		dialect:    d,
+		migrations: append([]Migration(nil), defaultRunner.migrations...),
+	}
 }
 
 // Add registers a migration. Migrations are sorted by ID before execution.

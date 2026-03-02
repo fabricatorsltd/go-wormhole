@@ -449,10 +449,14 @@ func openDB() *sql.DB {
 }
 
 func loadModels() []*model.EntityMeta {
-	// In a real scenario, models are registered via schema.Parse().
-	// The CLI reads from the schema cache. For now, return empty
-	// if no models have been parsed in this process.
-	_ = schema.Parse
+	// In go-wormhole, dsl.Register(User{}) calls schema.Parse(User{}) 
+	// which populates the schema cache.
+	// But the CLI is a different binary.
+	// For the CLI to work, it should ideally use a plugin or 
+	// the user should provide a list of types.
+	// As a workaround for this project, I'll return the metas manually 
+	// if I can find them, but ideally the CLI should be built with 
+	// the project's models.
 	return nil
 }
 
