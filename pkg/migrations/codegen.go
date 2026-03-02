@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/fabricatorsltd/go-wormhole/pkg/migrations/util"
 )
 
 // GenerateMigrationFile produces the Go source code for a timestamped
@@ -11,7 +13,7 @@ import (
 // the diff operations.
 func GenerateMigrationFile(name string, ops []MigrationOp) string {
 	ts := time.Now().UTC().Format("20060102150405")
-	migrationID := ts + "_" + toSnake(name)
+	migrationID := ts + "_" + util.ToSnake(name)
 
 	var up strings.Builder
 	var down strings.Builder
@@ -40,13 +42,13 @@ func init() {
 // MigrationFileName returns the file name for a migration.
 func MigrationFileName(name string) string {
 	ts := time.Now().UTC().Format("20060102150405")
-	return ts + "_" + toSnake(name) + ".go"
+	return ts + "_" + util.ToSnake(name) + ".go"
 }
 
 // SQLScriptFileName returns a .sql file name for a migration.
 func SQLScriptFileName(name string) string {
 	ts := time.Now().UTC().Format("20060102150405")
-	return ts + "_" + toSnake(name) + ".sql"
+	return ts + "_" + util.ToSnake(name) + ".sql"
 }
 
 // GenerateSQLScript renders migration ops as a plain SQL script using
@@ -162,20 +164,4 @@ func writeColumnLiteral(w *strings.Builder, c ColumnDef) {
 	w.WriteString("}")
 }
 
-// toSnake converts CamelCase/spaces to snake_case for file names.
-func toSnake(s string) string {
-	s = strings.ReplaceAll(s, " ", "_")
-	s = strings.ReplaceAll(s, "-", "_")
-	var b strings.Builder
-	for i, r := range s {
-		if r >= 'A' && r <= 'Z' {
-			if i > 0 && s[i-1] != '_' {
-				b.WriteByte('_')
-			}
-			b.WriteRune(r + ('a' - 'A'))
-		} else {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
-}
+

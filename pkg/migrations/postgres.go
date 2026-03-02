@@ -1,5 +1,10 @@
 package migrations
 
+import (
+	"fmt"
+	"github.com/fabricatorsltd/go-wormhole/pkg/migrations/util"
+)
+
 // PostgresDialect generates DDL for PostgreSQL.
 type PostgresDialect struct{}
 
@@ -19,4 +24,34 @@ func (PostgresDialect) AutoIncrementType(baseType string) string {
 	default:
 		return "SERIAL"
 	}
+}
+
+// DisableConstraints returns a SQL statement to disable foreign key checks
+// or other constraints for a given table in PostgreSQL.
+func (d PostgresDialect) DisableConstraints(table string) string {
+	return fmt.Sprintf("ALTER TABLE %s DISABLE TRIGGER ALL;", d.QuoteIdent(table))
+}
+
+// EnableConstraints returns a SQL statement to enable foreign key checks
+// or other constraints for a given table in PostgreSQL.
+func (d PostgresDialect) EnableConstraints(table string) string {
+	return fmt.Sprintf("ALTER TABLE %s ENABLE TRIGGER ALL;", d.QuoteIdent(table))
+}
+
+// SetIdentityInsert is not directly applicable to PostgreSQL.
+func (PostgresDialect) SetIdentityInsert(table string, enable bool) string {
+	return "" // Not applicable
+}
+
+// ResetSequence returns a SQL statement to reset the sequence for an auto-increment
+// column in PostgreSQL.
+func (d PostgresDialect) ResetSequence(table string, column string) string {
+	return fmt.Sprintf("SELECT setval(pg_get_serial_sequence('%s', '%s'), (SELECT MAX(%s) FROM %s));",
+		table, column, d.QuoteIdent(column), d.QuoteIdent(table))
+}
+
+// ColumnName returns the database column name for a given Go field name,
+// converted to snake_case for PostgreSQL.
+func (PostgresDialect) ColumnName(fieldName string) string {
+	return util.ToSnake(fieldName)
 }
