@@ -20,6 +20,8 @@ ctx.Save()  // → UPDATE "users" SET "age" = ? WHERE "id" = ?
 - **Pointer-tracking DSL** — compile-time type-safe queries, no code generation
 - **Change Tracker** — Unit of Work with partial UPDATE (only changed columns)
 - **SQL + NoSQL** — pluggable providers for PostgreSQL, SQLite, MySQL, MongoDB, Slipstream (Bitcask), MemDoc (in-memory)
+- **Cross-Engine Sync** — migrate data between different engines (e.g. MSSQL to Postgres) with identity/sequence handling
+- **Engine-Specific Naming** — automatic mapping between conventions (PascalCase for MSSQL, snake_case for others)
 - **Code-First Migrations** — EF Core-style differ, runner, CLI, scaffold, multi-dialect DDL
 - **Resilience** — retry with backoff, circuit breaker, aggregated MultiError
 - **Lifecycle Hooks** — `BeforeSave()`, `AfterInsert()` auto-discovered via reflection

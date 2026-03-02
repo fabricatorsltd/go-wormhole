@@ -215,12 +215,51 @@ building the `DatabaseSchema` from the operations.
 | `wormhole migrations add <Name>` | Generate a new migration file        |
 | `wormhole migrations list`       | Show pending/applied migrations      |
 | `wormhole database update`       | Apply pending migrations             |
+| `wormhole database sync`         | Migrate data between different engines |
 | `wormhole dbcontext scaffold`    | Reverse-engineer DB → Go structs     |
 | `wormhole nosql-migrations generate <Name>` | Generate NoSQL evolution script |
 | `wormhole nosql-migrations list` | Show pending/applied NoSQL scripts   |
 | `wormhole nosql-migrations apply`| Apply pending NoSQL scripts          |
 
-### Environment Variables
+### Cross-Engine Sync
+
+`go-wormhole` includes a data migration engine that allows you to sync data
+between different database types (e.g. migrating from MSSQL to PostgreSQL).
+
+### Data Migrator Engine
+
+The `DataMigrator` handles the complexities of cross-engine transfers:
+
+- **Constraint Handling**: Automatically disables/enables foreign keys and
+  triggers during the migration.
+- **Identity/Sequence Sync**: Manages `SET IDENTITY_INSERT` for MSSQL and
+  resets PostgreSQL sequences (`setval`) after the data is loaded.
+- **Streaming & Batching**: Uses a buffered approach to migrate large tables
+  without high memory consumption.
+
+### Usage via CLI
+
+```bash
+WORMHOLE_SRC_DRIVER="mssql" \
+WORMHOLE_SRC_DSN="sqlserver://src_server" \
+WORMHOLE_DST_DRIVER="postgres" \
+WORMHOLE_DST_DSN="postgres://dst_server" \
+wormhole database sync
+```
+
+### Engine-Specific Naming Strategy
+
+The engine automatically adapts to the naming conventions of each database
+if no explicit `db:"..."` tag is provided:
+
+- **MSSQL**: Uses **PascalCase** (the default Go field name) as the column name.
+- **Postgres/MySQL/SQLite**: Converts Go field names to **snake_case** (e.g. `UserID` → `user_id`).
+
+This allows you to point a single Go model at two different databases with
+different naming standards, and the engine will "just work."
+
+
+## Environment Variables
 
 | Variable          | Default   | Description                |
 |-------------------|-----------|----------------------------|
