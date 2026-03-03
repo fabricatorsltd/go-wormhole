@@ -1,19 +1,26 @@
 package util
 
-import "unicode"
+import (
+	"strings"
+	"unicode"
+)
 
-// ToSnake converts a string to snake_case.
+// ToSnake converts CamelCase/PascalCase or space-separated strings to snake_case.
+// It also handles hyphens by replacing them with underscores.
 func ToSnake(s string) string {
-	var result []rune
+	s = strings.ReplaceAll(s, " ", "_")
+	s = strings.ReplaceAll(s, "-", "_")
+
+	var b strings.Builder
 	for i, r := range s {
 		if unicode.IsUpper(r) {
-			if i > 0 && result[len(result)-1] != '_' {
-				result = append(result, '_')
+			if i > 0 && unicode.IsLower(rune(s[i-1])) || (i > 0 && i+1 < len(s) && unicode.IsLower(rune(s[i+1])) && unicode.IsUpper(r)) {
+				b.WriteRune('_')
 			}
-			result = append(result, unicode.ToLower(r))
-		} else {
-			result = append(result, r)
+			b.WriteRune(unicode.ToLower(r))
+			continue
 		}
+		b.WriteRune(r)
 	}
-	return string(result)
+	return b.String()
 }

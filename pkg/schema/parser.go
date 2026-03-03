@@ -2,13 +2,11 @@ package schema
 
 import (
 	"reflect"
-	"strings"
 	"sync"
 
-	"github.com/mirkobrombin/go-foundation/pkg/tags"
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
-	"github.com/fabricatorsltd/go-wormhole/pkg/provider" // New import
 	"github.com/fabricatorsltd/go-wormhole/pkg/util"
+	"github.com/mirkobrombin/go-foundation/pkg/tags"
 )
 
 const tagName = "db"
@@ -28,16 +26,16 @@ func init() {
 
 // Parse inspects a struct (or pointer-to-struct) and returns its EntityMeta.
 // Results are cached per type.
-func Parse(v any, dialect provider.Dialect) *model.EntityMeta {
+func Parse(v any) *model.EntityMeta {
 	t := reflect.TypeOf(v)
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
-	return ParseType(t, dialect)
+	return ParseType(t)
 }
 
 // ParseType builds EntityMeta from a reflect.Type. Cached.
-func ParseType(t reflect.Type, dialect provider.Dialect) *model.EntityMeta {
+func ParseType(t reflect.Type) *model.EntityMeta {
 	if m, ok := cache.Load(t); ok {
 		return m.(*model.EntityMeta)
 	}
@@ -50,12 +48,11 @@ func ParseType(t reflect.Type, dialect provider.Dialect) *model.EntityMeta {
 	parsed := parser.ParseType(t)
 	for _, fm := range parsed {
 		col := fm.Get("column")
+		sf, _ := t.FieldByName(fm.Name)
 		if col == "" {
-			sf, _ := t.FieldByName(fm.Name) // Get sf here as it's needed for dialect.ColumnName
-			col = dialect.ColumnName(sf.Name)
+			col = util.ToSnake(sf.Name)
 		}
 
-		sf, _ := t.FieldByName(fm.Name)
 		field := model.FieldMeta{
 			FieldName:  fm.Name,
 			Column:     col,
@@ -84,5 +81,3 @@ func ParseType(t reflect.Type, dialect provider.Dialect) *model.EntityMeta {
 	cache.Store(t, meta)
 	return meta
 }
-
-
