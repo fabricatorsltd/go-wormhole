@@ -18,11 +18,12 @@ type FieldMeta struct {
 // EntityMeta describes the full mapping of a Go struct to a
 // storage entity (table, collection, bucket, …).
 type EntityMeta struct {
-	Name       string       // entity / table name
-	GoType     reflect.Type // struct type
-	Fields     []FieldMeta
-	PrimaryKey *FieldMeta // shortcut to PK field
-	fieldIndex map[string]int
+	Name        string       // entity / table name
+	GoType      reflect.Type // struct type
+	Fields      []FieldMeta
+	PrimaryKeys []*FieldMeta // composite PK fields
+	PrimaryKey  *FieldMeta  // shortcut to the first PK field (common case)
+	fieldIndex  map[string]int
 }
 
 // Field returns field metadata by Go struct name.

@@ -14,6 +14,14 @@ type Migration struct {
 	Down func(b *SchemaBuilder)
 }
 
+var globalMigrations []Migration
+
+// Register adds a migration to the global registry.
+// This is used by generated migration files in their init() function.
+func Register(m Migration) {
+	globalMigrations = append(globalMigrations, m)
+}
+
 // Runner executes pending migrations against a database.
 type Runner struct {
 	db         *sql.DB
@@ -21,13 +29,17 @@ type Runner struct {
 	dialect    Dialect
 }
 
-// NewRunner creates a migration runner.
+// NewRunner creates a migration runner, pre-populated with global migrations.
 func NewRunner(db *sql.DB, dialect ...Dialect) *Runner {
 	var d Dialect = DefaultDialect{}
 	if len(dialect) > 0 {
 		d = dialect[0]
 	}
-	return &Runner{db: db, dialect: d}
+	// Copy global migrations to avoid side effects between runners
+	m := make([]Migration, len(globalMigrations))
+	copy(m, globalMigrations)
+
+	return &Runner{db: db, dialect: d, migrations: m}
 }
 
 // Add registers a migration. Migrations are sorted by ID before execution.
