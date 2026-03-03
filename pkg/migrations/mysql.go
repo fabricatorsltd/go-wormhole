@@ -1,7 +1,7 @@
 package migrations
 
 import (
-	"github.com/fabricatorsltd/go-wormhole/pkg/migrations/util"
+	"github.com/fabricatorsltd/go-wormhole/pkg/util"
 )
 
 // MySQLDialect generates DDL for MySQL / MariaDB.
@@ -12,10 +12,10 @@ import (
 // partial DDL failures cannot be rolled back automatically.
 type MySQLDialect struct{}
 
-func (MySQLDialect) QuoteIdent(s string) string         { return "`" + s + "`" }
-func (MySQLDialect) AutoIncrementClause() string         { return "AUTO_INCREMENT" }
-func (MySQLDialect) AutoIncrementType(string) string     { return "" }
-func (MySQLDialect) SupportsIfNotExists() bool           { return true }
+func (MySQLDialect) QuoteIdent(s string) string      { return "`" + s + "`" }
+func (MySQLDialect) AutoIncrementClause() string     { return "AUTO_INCREMENT" }
+func (MySQLDialect) AutoIncrementType(string) string { return "" }
+func (MySQLDialect) SupportsIfNotExists() bool       { return true }
 
 // DisableConstraints returns a SQL statement to disable foreign key checks
 // or other constraints globally in MySQL.

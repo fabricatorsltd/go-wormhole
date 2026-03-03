@@ -2,15 +2,16 @@ package migrations
 
 import (
 	"fmt"
-	"github.com/fabricatorsltd/go-wormhole/pkg/migrations/util"
+
+	"github.com/fabricatorsltd/go-wormhole/pkg/util"
 )
 
 // PostgresDialect generates DDL for PostgreSQL.
 type PostgresDialect struct{}
 
-func (PostgresDialect) QuoteIdent(s string) string      { return `"` + s + `"` }
-func (PostgresDialect) AutoIncrementClause() string      { return "" }
-func (PostgresDialect) SupportsIfNotExists() bool        { return true }
+func (PostgresDialect) QuoteIdent(s string) string  { return `"` + s + `"` }
+func (PostgresDialect) AutoIncrementClause() string { return "" }
+func (PostgresDialect) SupportsIfNotExists() bool   { return true }
 
 // AutoIncrementType maps INTEGER → SERIAL, BIGINT → BIGSERIAL.
 func (PostgresDialect) AutoIncrementType(baseType string) string {

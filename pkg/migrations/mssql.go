@@ -1,5 +1,7 @@
 package migrations
 
+import "fmt"
+
 // MSSQLDialect generates DDL for Microsoft SQL Server (T-SQL).
 //
 // Key differences from standard SQL:
@@ -11,9 +13,9 @@ package migrations
 type MSSQLDialect struct{}
 
 func (MSSQLDialect) QuoteIdent(s string) string      { return "[" + s + "]" }
-func (MSSQLDialect) AutoIncrementClause() string      { return "IDENTITY(1,1)" }
-func (MSSQLDialect) AutoIncrementType(string) string   { return "" }
-func (MSSQLDialect) SupportsIfNotExists() bool         { return false }
+func (MSSQLDialect) AutoIncrementClause() string     { return "IDENTITY(1,1)" }
+func (MSSQLDialect) AutoIncrementType(string) string { return "" }
+func (MSSQLDialect) SupportsIfNotExists() bool       { return false }
 
 // AddColumnKeyword returns the T-SQL keyword for adding a column.
 // MSSQL uses ALTER TABLE t ADD col ... (no COLUMN keyword).

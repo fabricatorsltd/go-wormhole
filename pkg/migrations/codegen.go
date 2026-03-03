@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/migrations/util"
+	"github.com/fabricatorsltd/go-wormhole/pkg/util"
 )
 
 // GenerateMigrationFile produces the Go source code for a timestamped
@@ -163,5 +163,3 @@ func writeColumnLiteral(w *strings.Builder, c ColumnDef) {
 	}
 	w.WriteString("}")
 }
-
-

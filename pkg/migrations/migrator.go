@@ -1,3 +1,5 @@
+//go:build legacy_migrator
+
 package migrations
 
 import (
@@ -10,8 +12,6 @@ import (
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
 	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
 	"github.com/fabricatorsltd/go-wormhole/pkg/query"
-	"github.com/fabricatorsltd/go-wormhole/pkg/query/ast"
-	"github.com/fabricatorsltd/go-wormhole/pkg/query/builder"
 	"github.com/fabricatorsltd/go-wormhole/pkg/tracker"
 )
 
@@ -48,12 +48,10 @@ func (dm *DataMigrator) WithBatchSize(size int) *DataMigrator {
 
 // Sync synchronizes data for a given entity between source and destination.
 func (dm *DataMigrator) Sync(ctx context.Context, entity *model.Entity) error {
-	fmt.Printf("Starting synchronization for entity: %s
-", entity.Name)
+	fmt.Printf("Starting synchronization for entity: %s\n", entity.Name)
 
 	if entity.IsJunction {
-		fmt.Printf("Skipping junction entity: %s
-", entity.Name)
+		fmt.Printf("Skipping junction entity: %s\n", entity.Name)
 		return nil
 	}
 
@@ -65,8 +63,7 @@ func (dm *DataMigrator) Sync(ctx context.Context, entity *model.Entity) error {
 	// Ensure identity insert is re-enabled on function exit
 	defer func() {
 		if err := dm.setIdentityInsert(ctx, entity, false); err != nil {
-			fmt.Printf("WARNING: Failed to unset identity insert for entity %s: %v
-", entity.Name, err)
+			fmt.Printf("WARNING: Failed to unset identity insert for entity %s: %v\n", entity.Name, err)
 		}
 	}()
 
@@ -75,8 +72,7 @@ func (dm *DataMigrator) Sync(ctx context.Context, entity *model.Entity) error {
 		return fmt.Errorf("failed to stream and batch data for entity %s: %w", entity.Name, err)
 	}
 
-	fmt.Printf("Finished synchronization for entity: %s
-", entity.Name)
+	fmt.Printf("Finished synchronization for entity: %s\n", entity.Name)
 	return nil
 }
 
@@ -93,8 +89,7 @@ func (dm *DataMigrator) streamAndBatchData(ctx context.Context, entity *model.En
 	}
 	defer func() {
 		if cerr := cursor.Close(); cerr != nil {
-			fmt.Printf("WARNING: Failed to close source cursor for entity %s: %v
-", entity.Name, cerr)
+			fmt.Printf("WARNING: Failed to close source cursor for entity %s: %v\\n", entity.Name, cerr)
 		}
 	}()
 
@@ -174,8 +169,7 @@ func (dm *DataMigrator) setIdentityInsert(ctx context.Context, entity *model.Ent
 
 	for _, field := range entity.Fields {
 		if field.IsPrimaryKey && field.IsAutoIncrement {
-			fmt.Printf("Setting IdentityInsert for entity %s, primary key %s to %v
-", entity.Name, field.Name, enable)
+			fmt.Printf("Setting IdentityInsert for entity %s, primary key %s to %v\n", entity.Name, field.Name, enable)
 			return dialect.SetIdentityInsert(ctx, entity.Name, enable)
 		}
 	}
@@ -280,8 +274,7 @@ func (dm *DataMigrator) DiffAndSync(ctx context.Context) error {
 	// }
 
 	// for _, entity := range changedEntities {
-	// 	fmt.Printf("Applying changes for entity: %s
-", entity.Name)
+	// 	fmt.Printf("Applying changes for entity: %s\n", entity.Name)
 	// 	// Here, we would fetch specific changed records, not necessarily full sync.
 	// 	// For simplicity, calling full Sync for now.
 	// 	if err := dm.Sync(ctx, entity); err != nil {
@@ -327,8 +320,7 @@ func (mh *MigrationHistory) GetAppliedMigrations(ctx context.Context) ([]*Applie
 	}
 	defer func() {
 		if cerr := cursor.Close(); cerr != nil {
-			fmt.Printf("WARNING: Failed to close migration history cursor: %v
-", cerr)
+			fmt.Printf("WARNING: Failed to close migration history cursor: %v\n", cerr)
 		}
 	}()
 
@@ -365,8 +357,7 @@ func (mh *MigrationHistory) GetLatestAppliedMigration(ctx context.Context) (*App
 	}
 	defer func() {
 		if cerr := cursor.Close(); cerr != nil {
-			fmt.Printf("WARNING: Failed to close migration history cursor for latest: %v
-", cerr)
+			fmt.Printf("WARNING: Failed to close migration history cursor for latest: %v\n", cerr)
 		}
 	}()
 
@@ -398,8 +389,7 @@ func (mh *MigrationHistory) GetLatestAppliedMigration(ctx context.Context) (*App
 
 // EnsureMigrationHistoryTableExists ensures the migration history table exists in the destination.
 func (mh *MigrationHistory) EnsureMigrationHistoryTableExists(ctx context.Context) error {
-	fmt.Printf("Ensuring migration history table '%s' exists...
-", MigrationHistoryEntityName)
+	fmt.Printf("Ensuring migration history table '%s' exists...\n", MigrationHistoryEntityName)
 
 	migrationHistorySchema := mh.getMigrationHistorySchema()
 	_, err := mh.destinationProvider.CreateTable(ctx, migrationHistorySchema)
@@ -407,8 +397,7 @@ func (mh *MigrationHistory) EnsureMigrationHistoryTableExists(ctx context.Contex
 		return fmt.Errorf("failed to create migration history table '%s': %w", MigrationHistoryEntityName, err)
 	}
 
-	fmt.Printf("Migration history table '%s' ensured.
-", MigrationHistoryEntityName)
+	fmt.Printf("Migration history table '%s' ensured.\n", MigrationHistoryEntityName)
 	return nil
 }
 
@@ -480,7 +469,7 @@ func mapDocumentToStruct(doc model.Document, target interface{}) error {
 						}
 					}
 				}
-			// Add more type conversions as needed (int, bool, float, etc.)
+				// Add more type conversions as needed (int, bool, float, etc.)
 			}
 		}
 	}

@@ -485,8 +485,13 @@ func newProvider(ctx context.Context, providerName, dsnEnv, driverEnv, dbNameEnv
 		if driver == "" {
 			driver = "sqlite3" // Default to sqlite3 if not specified
 		}
-		sp := sqlprovider.New(driver, dsn)
-		if err := sp.Open(ctx); err != nil {
+
+		db, err := sql.Open(driver, dsn)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open sql DB: %w", err)
+		}
+		sp := sqlprovider.New(db)
+		if err := sp.Open(ctx, dsn); err != nil {
 			return nil, fmt.Errorf("failed to open sql provider: %w", err)
 		}
 		p = sp
