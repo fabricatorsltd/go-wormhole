@@ -426,7 +426,7 @@ func cmdNoSQLMigrationsApply() {
 }
 
 func cmdDBSync() {
-	if len(os.Args) < 4 {
+	if len(os.Args) < 5 {
 		fmt.Fprintln(os.Stderr, "Usage: wormhole database sync <source_provider> <destination_provider>")
 		os.Exit(1)
 	}
@@ -483,14 +483,19 @@ func newProvider(ctx context.Context, providerName, dsnEnv, driverEnv, dbNameEnv
 			return nil, fmt.Errorf("%s is required for sql provider", dsnEnv)
 		}
 		if driver == "" {
-			driver = "sqlite3" // Default to sqlite3 if not specified
+			driver = "sqlite" // Default to sqlite if not specified
 		}
 
 		db, err := sql.Open(driver, dsn)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open sql DB: %w", err)
 		}
-		sp := sqlprovider.New(db)
+		driverName := strings.ToLower(driver)
+		opts := []sqlprovider.Option{sqlprovider.WithName(driverName)}
+		if strings.Contains(driverName, "postgres") || strings.Contains(driverName, "pgx") {
+			opts = append(opts, sqlprovider.WithNumberedParams())
+		}
+		sp := sqlprovider.New(db, opts...)
 		if err := sp.Open(ctx, dsn); err != nil {
 			return nil, fmt.Errorf("failed to open sql provider: %w", err)
 		}

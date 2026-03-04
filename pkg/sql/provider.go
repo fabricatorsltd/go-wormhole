@@ -91,6 +91,9 @@ func (p *Provider) logQuery(c Compiled) {
 
 func (p *Provider) Name() string { return p.name }
 
+// SQLDB exposes the underlying *sql.DB for advanced operations.
+func (p *Provider) SQLDB() *sql.DB { return p.db }
+
 func (p *Provider) Capabilities() provider.Capabilities {
 	return provider.Capabilities{
 		Transactions:     true,
