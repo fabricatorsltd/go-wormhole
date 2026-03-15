@@ -144,7 +144,7 @@ func (r *Runner) applyUp(ctx context.Context, m Migration) error {
 		}
 	}
 
-	if err := RecordMigration(ctx, tx, m.ID); err != nil {
+	if err := RecordMigration(ctx, tx, m.ID, r.dialect); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("record: %w", err)
 	}
@@ -168,7 +168,7 @@ func (r *Runner) applyDown(ctx context.Context, m Migration) error {
 		}
 	}
 
-	if err := RemoveMigration(ctx, tx, m.ID); err != nil {
+	if err := RemoveMigration(ctx, tx, m.ID, r.dialect); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("remove record: %w", err)
 	}

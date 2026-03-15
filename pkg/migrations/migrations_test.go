@@ -245,7 +245,7 @@ func TestHistoryEnsureAndRecord(t *testing.T) {
 
 	// Record via transaction
 	tx, _ := db.BeginTx(ctx, nil)
-	if err := migrations.RecordMigration(ctx, tx, "20260101_init"); err != nil {
+	if err := migrations.RecordMigration(ctx, tx, "20260101_init", migrations.DefaultDialect{}); err != nil {
 		t.Fatal(err)
 	}
 	_ = tx.Commit()
@@ -262,11 +262,11 @@ func TestHistoryRemove(t *testing.T) {
 	_ = migrations.EnsureHistoryTable(ctx, db)
 
 	tx, _ := db.BeginTx(ctx, nil)
-	_ = migrations.RecordMigration(ctx, tx, "m1")
+	_ = migrations.RecordMigration(ctx, tx, "m1", migrations.DefaultDialect{})
 	_ = tx.Commit()
 
 	tx, _ = db.BeginTx(ctx, nil)
-	_ = migrations.RemoveMigration(ctx, tx, "m1")
+	_ = migrations.RemoveMigration(ctx, tx, "m1", migrations.DefaultDialect{})
 	_ = tx.Commit()
 
 	applied, _ := migrations.AppliedMigrations(ctx, db)

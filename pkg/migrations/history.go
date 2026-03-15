@@ -9,6 +9,15 @@ import (
 
 const historyTable = "_wormhole_migrations_history"
 
+// placeholder returns the SQL bind parameter placeholder for position n (1-based).
+// Dialects that implement Placeholder(int) string are used; otherwise defaults to "?".
+func placeholder(d Dialect, n int) string {
+	if p, ok := d.(interface{ Placeholder(int) string }); ok {
+		return p.Placeholder(n)
+	}
+	return "?"
+}
+
 // HistoryRecord represents a single applied migration.
 type HistoryRecord struct {
 	MigrationID string
@@ -46,18 +55,18 @@ func AppliedMigrations(ctx context.Context, db *sql.DB) (map[string]bool, error)
 }
 
 // RecordMigration inserts a migration ID into the history table within a transaction.
-func RecordMigration(ctx context.Context, tx *sql.Tx, migrationID string) error {
+func RecordMigration(ctx context.Context, tx *sql.Tx, migrationID string, d Dialect) error {
 	_, err := tx.ExecContext(ctx,
-		fmt.Sprintf(`INSERT INTO "%s" ("migration_id", "applied_at") VALUES (?, ?)`,
-			historyTable),
+		fmt.Sprintf(`INSERT INTO "%s" ("migration_id", "applied_at") VALUES (%s, %s)`,
+			historyTable, placeholder(d, 1), placeholder(d, 2)),
 		migrationID, time.Now().UTC())
 	return err
 }
 
 // RemoveMigration deletes a migration ID from the history table (for rollback).
-func RemoveMigration(ctx context.Context, tx *sql.Tx, migrationID string) error {
+func RemoveMigration(ctx context.Context, tx *sql.Tx, migrationID string, d Dialect) error {
 	_, err := tx.ExecContext(ctx,
-		fmt.Sprintf(`DELETE FROM "%s" WHERE "migration_id" = ?`, historyTable),
+		fmt.Sprintf(`DELETE FROM "%s" WHERE "migration_id" = %s`, historyTable, placeholder(d, 1)),
 		migrationID)
 	return err
 }

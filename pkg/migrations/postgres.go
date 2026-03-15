@@ -51,6 +51,8 @@ func (d PostgresDialect) ResetSequence(table string, column string) string {
 		table, column, d.QuoteIdent(column), d.QuoteIdent(table))
 }
 
+func (PostgresDialect) Placeholder(n int) string { return fmt.Sprintf("$%d", n) }
+
 // ColumnName returns the database column name for a given Go field name,
 // converted to snake_case for PostgreSQL.
 func (PostgresDialect) ColumnName(fieldName string) string {
