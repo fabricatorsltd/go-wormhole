@@ -35,6 +35,6 @@ const (
 type SortDir int
 
 const (
-	Asc  SortDir = iota
+	Asc SortDir = iota
 	Desc
 )

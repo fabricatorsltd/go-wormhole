@@ -9,12 +9,13 @@ import (
 	"sort"
 	"strings"
 
+	_ "github.com/glebarez/sqlite" // pure Go sqlite driver (no CGO)
+	"github.com/fabricatorsltd/go-wormhole/pkg/discovery"
 	"github.com/fabricatorsltd/go-wormhole/pkg/migrations"
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
 	"github.com/fabricatorsltd/go-wormhole/pkg/mongo"
 	"github.com/fabricatorsltd/go-wormhole/pkg/nosqlmigrations"
 	"github.com/fabricatorsltd/go-wormhole/pkg/provider" // New import
-	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
 	sqlprovider "github.com/fabricatorsltd/go-wormhole/pkg/sql" // New import with alias
 )
 
@@ -154,7 +155,7 @@ func cmdMigrationsAdd() {
 		}
 	}
 
-	// Generate file
+	// Generate Go file
 	source := migrations.GenerateMigrationFile(name, ops)
 	fileName := migrations.MigrationFileName(name)
 
@@ -169,7 +170,18 @@ func cmdMigrationsAdd() {
 		os.Exit(1)
 	}
 
+	// Also generate SQL file for CLI execution
+	dialect := resolveDialect("default")
+	sqlScript := migrations.GenerateSQLScript(ops, dialect)
+	sqlFileName := strings.TrimSuffix(fileName, ".go") + ".sql"
+	sqlPath := filepath.Join(dir, sqlFileName)
+	if err := os.WriteFile(sqlPath, []byte(sqlScript), 0o644); err != nil {
+		fmt.Fprintf(os.Stderr, "write SQL: %v\n", err)
+		os.Exit(1)
+	}
+
 	fmt.Printf("Created migration: %s\n", path)
+	fmt.Printf("Created SQL script: %s\n", sqlPath)
 	fmt.Printf("Operations: %d\n", len(ops))
 	for _, op := range ops {
 		fmt.Printf("  - %s\n", describeOp(op))
@@ -216,14 +228,18 @@ func cmdDatabaseUpdate() {
 
 	ctx := context.Background()
 
-	// The actual migration execution needs compiled Go migration files.
-	// For the CLI tool, we create a runner and expect migrations to be
-	// registered via init() in the migrations package.
-	// In practice, users compile their app with migration files included.
-
 	if err := migrations.EnsureHistoryTable(ctx, db); err != nil {
 		fmt.Fprintf(os.Stderr, "ensure history: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Load all migration files and try to execute them as SQL scripts
+	dir := migrationsDir()
+	migrationFiles := listMigrationFiles(dir)
+
+	if len(migrationFiles) == 0 {
+		fmt.Println("No migration files found.")
+		return
 	}
 
 	applied, err := migrations.AppliedMigrations(ctx, db)
@@ -232,9 +248,24 @@ func cmdDatabaseUpdate() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Applied migrations: %d\n", len(applied))
-	fmt.Println("Run your application with migration files compiled in to apply pending migrations.")
-	fmt.Println("See: migrations.NewRunner(db).Up(ctx)")
+	pendingCount := 0
+	for _, file := range migrationFiles {
+		id := strings.TrimSuffix(file, ".go")
+		if !applied[id] {
+			// Try to execute as SQL-based migration
+			if err := executeMigrationFile(ctx, db, dir, file, id); err != nil {
+				fmt.Fprintf(os.Stderr, "failed to execute migration %s: %v\n", id, err)
+				os.Exit(1)
+			}
+			pendingCount++
+		}
+	}
+
+	if pendingCount == 0 {
+		fmt.Println("Database is up to date. No pending migrations.")
+	} else {
+		fmt.Printf("Successfully applied %d migration(s).\n", pendingCount)
+	}
 }
 
 func cmdMigrationsScript() {
@@ -541,11 +572,23 @@ func openDB() *sql.DB {
 }
 
 func loadModels() []*model.EntityMeta {
-	// In a real scenario, models are registered via schema.Parse().
-	// The CLI reads from the schema cache. For now, return empty
-	// if no models have been parsed in this process.
-	_ = schema.Parse
-	return nil
+	// Try to discover models from the current directory
+	models, err := discovery.DiscoverModels(".")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to discover models: %v\n", err)
+		return nil
+	}
+
+	if len(models) == 0 {
+		fmt.Fprintf(os.Stderr, "No models with `db` tags found in current directory.\n")
+		fmt.Fprintf(os.Stderr, "Make sure your structs have proper wormhole tags, e.g.:\n")
+		fmt.Fprintf(os.Stderr, "  type User struct {\n")
+		fmt.Fprintf(os.Stderr, "    ID   int    `db:\"primary_key;auto_increment\"`\n")
+		fmt.Fprintf(os.Stderr, "    Name string `db:\"column:name\"`\n")
+		fmt.Fprintf(os.Stderr, "  }\n")
+	}
+
+	return models
 }
 
 func loadSnapshot(_ string) migrations.DatabaseSchema {
@@ -589,4 +632,93 @@ func describeOp(op migrations.MigrationOp) string {
 	default:
 		return fmt.Sprintf("%T", op)
 	}
+}
+
+// executeMigrationFile tries to execute a migration file by parsing and applying its operations
+func executeMigrationFile(ctx context.Context, db *sql.DB, dir, fileName, migrationID string) error {
+	filePath := filepath.Join(dir, fileName)
+	
+	// Try to extract SQL from the Go migration file
+	sqlStatements, err := extractSQLFromMigrationFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to extract SQL: %w", err)
+	}
+
+	// Execute each SQL statement in a transaction
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for _, stmt := range sqlStatements {
+		if strings.TrimSpace(stmt) == "" {
+			continue
+		}
+		_, err := tx.ExecContext(ctx, stmt)
+		if err != nil {
+			return fmt.Errorf("failed to execute SQL statement: %s, error: %w", stmt, err)
+		}
+	}
+
+	// Record the migration as applied
+	_, err = tx.ExecContext(ctx, 
+		"INSERT INTO _wormhole_migrations_history (migration_id, applied_at) VALUES (?, datetime('now'))", 
+		migrationID)
+	if err != nil {
+		return fmt.Errorf("failed to record migration: %w", err)
+	}
+
+	return tx.Commit()
+}
+
+// extractSQLFromMigrationFile parses a Go migration file and extracts SQL statements
+// This is a simplified version - in practice, you might want to use go/ast more thoroughly
+func extractSQLFromMigrationFile(filePath string) ([]string, error) {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Look for SQL script files with the same base name
+	dir := filepath.Dir(filePath)
+	baseName := strings.TrimSuffix(filepath.Base(filePath), ".go")
+	sqlFilePath := filepath.Join(dir, baseName+".sql")
+
+	if _, err := os.Stat(sqlFilePath); err == nil {
+		// Use the SQL file if it exists
+		sqlContent, err := os.ReadFile(sqlFilePath)
+		if err != nil {
+			return nil, err
+		}
+		
+		// Split by semicolon (simple approach)
+		statements := strings.Split(string(sqlContent), ";")
+		var nonEmpty []string
+		for _, stmt := range statements {
+			if strings.TrimSpace(stmt) != "" {
+				nonEmpty = append(nonEmpty, strings.TrimSpace(stmt))
+			}
+		}
+		return nonEmpty, nil
+	}
+
+	// Fallback: try to extract SQL from Go migration file comments or strings
+	// This is a basic approach - look for SQL in comments or string literals
+	lines := strings.Split(string(content), "\n")
+	var sqlStatements []string
+	
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		// Look for SQL in comments starting with -- or /* */
+		if strings.HasPrefix(line, "// SQL:") {
+			sql := strings.TrimPrefix(line, "// SQL:")
+			sql = strings.TrimSpace(sql)
+			if sql != "" {
+				sqlStatements = append(sqlStatements, sql)
+			}
+		}
+	}
+
+	return sqlStatements, nil
 }

@@ -28,9 +28,9 @@ type mockProvider struct {
 	committed   bool
 }
 
-func (m *mockProvider) Name() string                                       { return "mock" }
-func (m *mockProvider) Open(_ stdctx.Context, _ string) error              { return nil }
-func (m *mockProvider) Close() error                                       { return nil }
+func (m *mockProvider) Name() string                                              { return "mock" }
+func (m *mockProvider) Open(_ stdctx.Context, _ string) error                     { return nil }
+func (m *mockProvider) Close() error                                              { return nil }
 func (m *mockProvider) Delete(_ stdctx.Context, _ *model.EntityMeta, _ any) error { return nil }
 
 func (m *mockProvider) Insert(_ stdctx.Context, _ *model.EntityMeta, _ any) (any, error) {

@@ -67,5 +67,3 @@ func LoadScripts(dir string) ([]Script, error) {
 	}
 	return out, nil
 }
-
-

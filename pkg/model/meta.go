@@ -22,7 +22,7 @@ type EntityMeta struct {
 	GoType      reflect.Type // struct type
 	Fields      []FieldMeta
 	PrimaryKeys []*FieldMeta // composite PK fields
-	PrimaryKey  *FieldMeta  // shortcut to the first PK field (common case)
+	PrimaryKey  *FieldMeta   // shortcut to the first PK field (common case)
 	fieldIndex  map[string]int
 }
 
