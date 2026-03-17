@@ -116,5 +116,8 @@ func ValidateQueryCapabilities(c Capabilities, q query.Query) error {
 	if len(q.Includes) > 0 && !c.Aggregations {
 		return fmt.Errorf("provider does not support relation includes")
 	}
+	if (len(q.GroupBy) > 0 || len(q.Aggregates) > 0) && !c.Aggregations {
+		return fmt.Errorf("provider does not support aggregations")
+	}
 	return nil
 }

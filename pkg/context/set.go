@@ -13,13 +13,16 @@ import (
 // EntitySet provides a fluent API for querying and managing entities
 // of a single type through the DbContext.
 type EntitySet struct {
-	ctx   *DbContext
-	dest  any
-	meta  *model.EntityMeta
-	preds []query.Predicate
-	sorts []query.Sort
-	lim   int
-	off   int
+	ctx        *DbContext
+	dest       any
+	meta       *model.EntityMeta
+	preds      []query.Predicate
+	sorts      []query.Sort
+	lim        int
+	off        int
+	groupBy    []string
+	havingPreds []query.Predicate
+	aggregates  []query.Aggregate
 }
 
 // Set creates an EntitySet bound to the given destination.
@@ -81,6 +84,25 @@ func (s *EntitySet) Offset(n int) *EntitySet {
 	return s
 }
 
+// GroupBy appends fields to the GROUP BY clause. Chainable.
+func (s *EntitySet) GroupBy(fields ...string) *EntitySet {
+	s.groupBy = append(s.groupBy, fields...)
+	return s
+}
+
+// Having appends predicate(s) for the HAVING clause (AND logic). Chainable.
+func (s *EntitySet) Having(preds ...query.Predicate) *EntitySet {
+	s.havingPreds = append(s.havingPreds, preds...)
+	return s
+}
+
+// Aggregate appends an aggregate expression (COUNT, SUM, AVG, MIN, MAX)
+// to the SELECT clause. field may be "*" or empty for COUNT(*).
+func (s *EntitySet) Aggregate(fn query.AggFunc, field, alias string) *EntitySet {
+	s.aggregates = append(s.aggregates, query.Aggregate{Func: fn, Field: field, Alias: alias})
+	return s
+}
+
 // All executes the built query and scans results into dest
 // (must be *[]T or *[]*T).
 func (s *EntitySet) All() error {
@@ -133,6 +155,15 @@ func (s *EntitySet) buildQuery() query.Query {
 	}
 	if s.off > 0 {
 		b.Offset(s.off)
+	}
+	if len(s.groupBy) > 0 {
+		b.GroupBy(s.groupBy...)
+	}
+	if len(s.havingPreds) > 0 {
+		b.Having(s.havingPreds...)
+	}
+	for _, agg := range s.aggregates {
+		b.Aggregate(agg.Func, agg.Field, agg.Alias)
 	}
 	return b.Build()
 }
