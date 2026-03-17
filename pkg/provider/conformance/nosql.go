@@ -58,6 +58,42 @@ func RunNoSQLProvider(t *testing.T, name string, newProvider NoSQLFactory) {
 		}
 	})
 
+	t.Run(name+"/is-null-filter", func(t *testing.T) {
+		p := newProvider(t)
+		meta := schema.Parse(&testUser{})
+		ctx := context.Background()
+
+		for i := 1; i <= 5; i++ {
+			if _, err := p.Insert(ctx, meta, &testUser{ID: i, Name: "u", Age: 10 + i}); err != nil {
+				t.Fatalf("seed insert: %v", err)
+			}
+		}
+
+		// age IS NOT NULL → all 5 records (age is always set)
+		qNotNull := query.From(meta.Name).
+			Filter(query.Predicate{Field: "age", Op: query.OpIsNotNil}).
+			Build()
+		var notNullOut []testUser
+		if err := p.Execute(ctx, meta, qNotNull, &notNullOut); err != nil {
+			t.Fatalf("Execute IS NOT NULL: %v", err)
+		}
+		if len(notNullOut) != 5 {
+			t.Fatalf("IS NOT NULL: expected 5 results, got %d", len(notNullOut))
+		}
+
+		// age IS NULL → 0 records (age is always set)
+		qNull := query.From(meta.Name).
+			Filter(query.Predicate{Field: "age", Op: query.OpIsNil}).
+			Build()
+		var nullOut []testUser
+		if err := p.Execute(ctx, meta, qNull, &nullOut); err != nil {
+			t.Fatalf("Execute IS NULL: %v", err)
+		}
+		if len(nullOut) != 0 {
+			t.Fatalf("IS NULL: expected 0 results, got %d", len(nullOut))
+		}
+	})
+
 	t.Run(name+"/query", func(t *testing.T) {
 		p := newProvider(t)
 		meta := schema.Parse(&testUser{})

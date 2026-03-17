@@ -34,6 +34,11 @@ func TestBuildFilter_Predicate(t *testing.T) {
 			in:   query.Predicate{Field: "deleted_at", Op: query.OpIsNil},
 			want: bson.D{{Key: "deleted_at", Value: nil}},
 		},
+		{
+			name: "is not nil",
+			in:   query.Predicate{Field: "deleted_at", Op: query.OpIsNotNil},
+			want: bson.D{{Key: "deleted_at", Value: bson.D{{Key: "$ne", Value: nil}}}},
+		},
 	}
 
 	for _, tt := range tests {

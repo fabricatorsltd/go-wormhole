@@ -144,6 +144,23 @@ func TestCompileSelect_IsNull(t *testing.T) {
 	}
 }
 
+func TestCompileSelect_IsNotNull(t *testing.T) {
+	c := &wsql.Compiler{}
+	meta := testMeta()
+
+	q := query.From("users").
+		Filter(query.Predicate{Field: "age", Op: query.OpIsNotNil}).
+		Build()
+	out := c.Select(meta, q)
+
+	if !strings.Contains(out.SQL, `"age" IS NOT NULL`) {
+		t.Fatalf("SQL missing IS NOT NULL: %s", out.SQL)
+	}
+	if len(out.Params) != 0 {
+		t.Fatalf("params: want 0, got %d", len(out.Params))
+	}
+}
+
 func TestCompileSelect_Numbered(t *testing.T) {
 	c := &wsql.Compiler{Numbered: true}
 	meta := testMeta()

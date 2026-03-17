@@ -1,9 +1,8 @@
 # go-wormhole
 
-An Entity Framework-inspired ORM / Data Mapper for Go, built on top of
-[go-foundation](https://github.com/mirkobrombin/go-foundation).
+An Entity Framework-inspired ORM / Data Mapper for Go, built on top of [go-foundation](https://github.com/mirkobrombin/go-foundation).
 
-**Type-safe queries · Zero code generation · Dual SQL/NoSQL backends · Code-First Migrations · NO CGO**
+**Type-safe queries • Zero code generation • Dual SQL/NoSQL backends • Code-First Migrations**
 
 ```go
 dsl.Register(User{})
@@ -12,26 +11,12 @@ ctx := wh.New(provider.Default())
 var u User
 ctx.Set(&u).Find(42)
 u.Age = 35
-ctx.Save()  // → UPDATE "users" SET "age" = ? WHERE "id" = ?
-```
-
-## ⚡ Install as Global CLI Tool
-
-Install once, use everywhere like Entity Framework:
-
-```bash
-go install github.com/fabricatorsltd/go-wormhole/cmd/wormhole@latest
-
-# Use in any Go project with models
-export WORMHOLE_DSN="./app.db"
-wormhole migrations add CreateUserTable
-wormhole database update
+ctx.Save() // → UPDATE "users" SET "age" = ? WHERE "id" = ?
 ```
 
 ## Features
 
-- **🚀 NO CGO** — Pure Go, cross-platform compatible, easy deployment
-- **Global CLI Tool** — Install once with `go install`, use anywhere like `dotnet ef`
+- **Global CLI Tool** — Entity Framework-like CLI with `wormhole init`, uses your project's database drivers
 - **Auto-Discovery** — Automatically finds models with `db` tags in your project
 - **Pointer-tracking DSL** — compile-time type-safe queries, no code generation
 - **Change Tracker** — Unit of Work with partial UPDATE (only changed columns)
@@ -42,6 +27,51 @@ wormhole database update
 - **Resilience** — retry with backoff, circuit breaker, aggregated MultiError
 - **Lifecycle Hooks** — `BeforeSave()`, `AfterInsert()` auto-discovered via reflection
 - **DI-ready** — first-class `go-foundation/pkg/di` integration
+
+## Quick Start
+
+### 1. Install the CLI tool globally
+```bash
+go install github.com/fabricatorsltd/go-wormhole/cmd/wormhole@latest
+```
+
+### 2. Initialize in your project
+```bash
+cd your-project
+wormhole init
+```
+
+### 3. Import your database drivers
+Edit `wormhole_migrations_gen.go` and uncomment the driver you need:
+```go
+// Import your database drivers here
+// Examples:
+// _ "github.com/lib/pq"                    // PostgreSQL
+// _ "github.com/go-sql-driver/mysql"       // MySQL  
+// _ "github.com/denisenkom/go-mssqldb"     // SQL Server
+_ "github.com/glebarez/sqlite"           // SQLite (pure Go) - RECOMMENDED
+```
+
+### 4. Set up your database connection
+```bash
+export WORMHOLE_DSN="./myapp.db"        # SQLite
+export WORMHOLE_DRIVER="sqlite"          # or postgres, mysql, sqlserver
+```
+
+### 5. Define your models
+```go
+type User struct {
+    ID   int    `db:"primary_key;auto_increment"`
+    Name string `db:"column:name"`
+    Age  int    `db:"column:age"`
+}
+```
+
+### 6. Generate and apply migrations
+```bash
+wormhole migrations add CreateUser
+wormhole database update
+```
 
 ## Documentation
 
@@ -66,6 +96,37 @@ wormhole database update
 | `dotnet ef migrations list` | `wormhole migrations list` |
 | `dotnet ef migrations script` | `wormhole migrations script` |
 | `dotnet ef dbcontext scaffold` | `wormhole dbcontext scaffold` |
+
+### Database Provider Examples
+
+```bash
+# PostgreSQL
+export WORMHOLE_DRIVER=postgres
+export WORMHOLE_DSN="host=localhost user=postgres dbname=myapp sslmode=disable"
+
+# MySQL
+export WORMHOLE_DRIVER=mysql  
+export WORMHOLE_DSN="user:password@tcp(localhost:3306)/myapp?parseTime=true"
+
+# SQL Server
+export WORMHOLE_DRIVER=sqlserver
+export WORMHOLE_DSN="server=localhost;user id=sa;database=myapp"
+
+# SQLite (default)
+export WORMHOLE_DRIVER=sqlite
+export WORMHOLE_DSN=./myapp.db
+```
+
+## How It Works
+
+The CLI uses build tags to compile your project with **your** database drivers:
+
+1. `wormhole init` creates `wormhole_migrations_gen.go` in your project
+2. You import whatever database drivers you want in that file  
+3. `wormhole migrations add` runs `go build -tags wormhole_gen_migrations` using YOUR drivers
+4. No CLI dependencies needed - uses whatever you've already imported
+
+This is the same pattern as Entity Framework: **uses your project's providers**.
 
 ## License
 

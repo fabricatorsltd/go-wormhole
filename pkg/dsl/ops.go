@@ -72,6 +72,12 @@ func IsNil[B any, F any](base *B, fieldPtr *F) Condition {
 	return Condition{Field: fi.Column, Op: query.OpIsNil, Value: nil}
 }
 
+// IsNotNil builds an IS NOT NULL predicate.
+func IsNotNil[B any, F any](base *B, fieldPtr *F) Condition {
+	fi := resolve(base, fieldPtr)
+	return Condition{Field: fi.Column, Op: query.OpIsNotNil, Value: nil}
+}
+
 // --- internal: zero-allocation hot path via unsafe ---
 
 func cond[B any, F any](base *B, fieldPtr *F, op query.Op, val F) Condition {
