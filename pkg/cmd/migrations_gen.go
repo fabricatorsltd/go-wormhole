@@ -1,134 +1,4 @@
-package main
-
-import (
-	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
-)
-
-func main() {
-	if len(os.Args) < 2 {
-		printUsage()
-		os.Exit(1)
-	}
-
-	switch os.Args[1] {
-	case "init":
-		initProject()
-	case "migrations":
-		if len(os.Args) < 3 {
-			printUsage()
-			os.Exit(1)
-		}
-		switch os.Args[2] {
-		case "add":
-			if len(os.Args) < 4 {
-				fmt.Fprintln(os.Stderr, "Usage: wormhole migrations add <Name>")
-				os.Exit(1)
-			}
-			runWithBuildTags("add", os.Args[3])
-		case "list":
-			runWithBuildTags("list", "")
-		case "script":
-			if len(os.Args) < 4 {
-				fmt.Fprintln(os.Stderr, "Usage: wormhole migrations script <Name> [dialect]")
-				os.Exit(1)
-			}
-			dialect := "default"
-			if len(os.Args) > 4 {
-				dialect = os.Args[4]
-			}
-			runWithBuildTags("script", os.Args[3], "-dialect", dialect)
-		default:
-			printUsage()
-			os.Exit(1)
-		}
-	case "database":
-		if len(os.Args) < 3 {
-			printUsage()
-			os.Exit(1)
-		}
-		switch os.Args[2] {
-		case "update":
-			runWithBuildTags("update", "")
-		default:
-			printUsage()
-			os.Exit(1)
-		}
-	case "nosql-migrations":
-		if len(os.Args) < 3 {
-			printUsage()
-			os.Exit(1)
-		}
-		switch os.Args[2] {
-		case "add":
-			if len(os.Args) < 4 {
-				fmt.Fprintln(os.Stderr, "Usage: wormhole nosql-migrations add <Name>")
-				os.Exit(1)
-			}
-			runWithBuildTags("nosql-add", os.Args[3])
-		case "list":
-			runWithBuildTags("nosql-list", "")
-		case "apply":
-			runWithBuildTags("nosql-update", "")
-		default:
-			printUsage()
-			os.Exit(1)
-		}
-	default:
-		printUsage()
-		os.Exit(1)
-	}
-}
-
-func printUsage() {
-	fmt.Fprintln(os.Stderr, `wormhole - Entity Framework-like CLI for Go
-
-Usage:
-  wormhole init                                Initialize wormhole in current project
-  wormhole migrations add <Name>              Generate a new migration from model diff
-  wormhole migrations script <Name> [dialect]  Export migration as .sql file
-  wormhole migrations list                     List pending migrations
-  wormhole database update                     Apply pending migrations
-  wormhole nosql-migrations add <Name>         Generate NoSQL evolution script
-  wormhole nosql-migrations list               List NoSQL evolution scripts
-  wormhole nosql-migrations apply              Apply pending NoSQL evolution scripts
-
-Dialects: default, postgres, mysql, mssql
-
-Environment Variables:
-  WORMHOLE_DSN               Database connection string (required for database commands)
-  WORMHOLE_DRIVER            SQL driver name (default: sqlite)
-  WORMHOLE_DIR               Migrations directory (default: ./migrations)
-  WORMHOLE_NOSQL_PROVIDER    NoSQL backend (default: mongo)
-  WORMHOLE_NOSQL_DSN         NoSQL connection string
-  WORMHOLE_NOSQL_DB          NoSQL database name
-  WORMHOLE_NOSQL_DIR         NoSQL scripts directory (default: ./nosql-migrations)
-
-How it works:
-  wormhole uses build tags to compile your project with your database drivers.
-  Run 'wormhole init' first to create wormhole_migrations_gen.go in your project.
-  Then import your database drivers in that file and use wormhole commands.
-
-Example:
-  wormhole init
-  # Edit wormhole_migrations_gen.go to import your drivers
-  export WORMHOLE_DSN="user:password@tcp(localhost:3306)/mydb"
-  export WORMHOLE_DRIVER="mysql"  
-  wormhole migrations add CreateUser
-  wormhole database update`)
-}
-
-func initProject() {
-	generatorPath := "wormhole_migrations_gen.go"
-	
-	if _, err := os.Stat(generatorPath); err == nil {
-		fmt.Printf("File %s already exists.\n", generatorPath)
-		return
-	}
-
-	template := `//go:build wormhole_gen_migrations
+//go:build wormhole_gen_migrations
 
 package main
 
@@ -143,20 +13,15 @@ import (
 	"strings"
 	"time"
 
-	// Import your database drivers here
-	// Examples:
-	// _ "github.com/lib/pq"                    // PostgreSQL
-	// _ "github.com/go-sql-driver/mysql"       // MySQL  
-	// _ "github.com/denisenkom/go-mssqldb"     // SQL Server
-	// _ "github.com/glebarez/sqlite"           // SQLite (pure Go)
-
 	"github.com/fabricatorsltd/go-wormhole/pkg/discovery"
 	"github.com/fabricatorsltd/go-wormhole/pkg/migrations"
+	"github.com/fabricatorsltd/go-wormhole/pkg/model"
 	"github.com/fabricatorsltd/go-wormhole/pkg/nosqlmigrations"
 )
 
-// This file enables wormhole CLI to use your project's database drivers.
-// The CLI builds this with: go build -tags wormhole_gen_migrations
+// This file is designed to be copied into user projects.
+// The user imports their database drivers in their main project,
+// and this generator will use whatever drivers are available.
 
 func main() {
 	var (
@@ -220,11 +85,11 @@ func handleMigrationAdd(name, dir string) {
 	}
 
 	if len(models) == 0 {
-		fmt.Fprintf(os.Stderr, "No models with ` + "`" + `db` + "`" + ` tags found in current directory.\n")
+		fmt.Fprintf(os.Stderr, "No models with `db` tags found in current directory.\n")
 		fmt.Fprintf(os.Stderr, "Make sure your structs have proper wormhole tags, e.g.:\n")
 		fmt.Fprintf(os.Stderr, "  type User struct {\n")
-		fmt.Fprintf(os.Stderr, "    ID   int    ` + "`" + `db:\"primary_key;auto_increment\"` + "`" + `\n")
-		fmt.Fprintf(os.Stderr, "    Name string ` + "`" + `db:\"column:name\"` + "`" + `\n")
+		fmt.Fprintf(os.Stderr, "    ID   int    `db:\"primary_key;auto_increment\"`\n")
+		fmt.Fprintf(os.Stderr, "    Name string `db:\"column:name\"`\n")
 		fmt.Fprintf(os.Stderr, "  }\n")
 		os.Exit(1)
 	}
@@ -445,7 +310,7 @@ func handleNoSQLMigrationAdd(name, dir string) {
 	}
 
 	path := filepath.Join(dir, scriptID+".js")
-	template := fmt.Sprintf(` + "`" + `// NoSQL Migration: %s
+	template := fmt.Sprintf(`// NoSQL Migration: %s
 // Generated: %s
 
 // Add your NoSQL migration logic here
@@ -454,7 +319,7 @@ func handleNoSQLMigrationAdd(name, dir string) {
 // db.products.updateMany({}, { $set: { version: 2 } });
 
 print("Migration %s executed");
-` + "`" + `, name, time.Now().Format(time.RFC3339), scriptID)
+`, name, time.Now().Format(time.RFC3339), scriptID)
 
 	if err := os.WriteFile(path, []byte(template), 0o644); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing file: %v\n", err)
@@ -528,14 +393,17 @@ func handleNoSQLMigrationsApply(provider, dir string) {
 		return
 	}
 
+	// This would need to be implemented based on the user's imported NoSQL drivers
 	fmt.Printf("Would apply %d NoSQL migration(s) using %s provider\n", len(scripts), provider)
 	fmt.Println("Note: NoSQL migration application requires user's imported drivers")
 }
 
-// Helper functions
+// Helper functions (copied from original implementation)
 
 func loadSnapshot(_ string) migrations.DatabaseSchema {
 	// For the initial version, start with an empty schema (greenfield).
+	// Future: parse previously generated migration files to reconstruct
+	// the cumulative schema state.
 	return migrations.DatabaseSchema{Tables: make(map[string]*migrations.TableSchema)}
 }
 
@@ -556,7 +424,7 @@ func listMigrationFiles(dir string) []string {
 }
 
 func generateGoMigration(id, name string, ops []migrations.Operation) string {
-	return fmt.Sprintf(` + "`" + `package migrations
+	return fmt.Sprintf(`package migrations
 
 import (
 	"context"
@@ -584,7 +452,7 @@ func (m %s) Down(ctx context.Context, db *sql.DB) error {
 func init() {
 	migrations.Register(&%s{})
 }
-` + "`" + `, name, name, id, id, id, id, name, id, id, id)
+`, name, name, id, id, id, id, name, id, id, id)
 }
 
 func generateSQLMigration(ops []migrations.Operation, dialect migrations.Dialect) string {
@@ -664,67 +532,4 @@ func executeMigrationFile(ctx context.Context, db *sql.DB, dir, file, id string)
 	}
 
 	return tx.Commit()
-}
-`
-
-	if err := os.WriteFile(generatorPath, []byte(template), 0o644); err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating %s: %v\n", generatorPath, err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Created %s\n", generatorPath)
-	fmt.Println("Now you can use wormhole commands in this project!")
-	fmt.Println()
-	fmt.Println("Remember to:")
-	fmt.Println("1. Import your database drivers in the imports section of this file")
-	fmt.Println("2. Set WORMHOLE_DSN and WORMHOLE_DRIVER environment variables")
-	fmt.Println("3. Define your models with proper `db` tags")
-	fmt.Println()
-	fmt.Println("Example usage:")
-	fmt.Println("  wormhole migrations add CreateUser")
-	fmt.Println("  wormhole database update")
-}
-
-func runWithBuildTags(action, name string, extraArgs ...string) {
-	// Check if migrations generator exists
-	generatorPath := "wormhole_migrations_gen.go"
-	if _, err := os.Stat(generatorPath); os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "Error: %s not found in current directory.\n", generatorPath)
-		fmt.Fprintln(os.Stderr, "Create it with: wormhole init")
-		os.Exit(1)
-	}
-
-	// Build temporary binary with wormhole_gen_migrations tag
-	tempBinary := filepath.Join(os.TempDir(), fmt.Sprintf("wormhole_temp_%d", os.Getpid()))
-	defer os.Remove(tempBinary)
-
-	fmt.Printf("Building migration runner...\n")
-	buildCmd := exec.Command("go", "build", "-tags", "wormhole_gen_migrations", "-o", tempBinary, ".")
-	buildCmd.Stdout = os.Stdout
-	buildCmd.Stderr = os.Stderr
-	
-	if err := buildCmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error building migration runner: %v\n", err)
-		fmt.Fprintln(os.Stderr, "Make sure your wormhole_migrations_gen.go file is valid and your project compiles.")
-		os.Exit(1)
-	}
-
-	// Prepare arguments for the temporary binary
-	args := []string{"-action", action}
-	if name != "" {
-		args = append(args, "-name", name)
-	}
-	args = append(args, extraArgs...)
-
-	// Run the temporary binary
-	fmt.Printf("Running migration action: %s\n", action)
-	runCmd := exec.Command(tempBinary, args...)
-	runCmd.Stdout = os.Stdout
-	runCmd.Stderr = os.Stderr
-	runCmd.Env = os.Environ()
-
-	if err := runCmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error running migration action: %v\n", err)
-		os.Exit(1)
-	}
 }

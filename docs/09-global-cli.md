@@ -1,55 +1,103 @@
-# Installing Wormhole as a Global CLI Tool
+# Global CLI Tool
 
-You can install wormhole globally just like Entity Framework's `dotnet ef` tool:
+The go-wormhole CLI provides an Entity Framework-like experience for Go developers. Unlike Entity Framework which requires providers to be installed separately, wormhole uses **your project's database drivers** via build tags.
+
+## Installation
 
 ```bash
 go install github.com/fabricatorsltd/go-wormhole/cmd/wormhole@latest
 ```
 
-This makes the `wormhole` command available anywhere on your system.
-
 ## 🚀 NO CGO Required
 
-Wormhole is built with **zero CGO dependencies**, making it:
+Wormhole CLI has **zero database driver dependencies**, making it:
 - Cross-platform compatible out of the box
-- Easy to deploy in containers and restricted environments
+- Easy to deploy in containers and restricted environments  
 - Simple to install without C compiler requirements
-- Fast to build and distribute
-
-We use `github.com/glebarez/sqlite` (pure Go) instead of `github.com/mattn/go-sqlite3` (CGO-based).
+- Uses **your project's** database drivers, not its own
 
 ## Quick Start
 
-1. **Install globally:**
+1. **Initialize in your project:**
    ```bash
-   go install github.com/fabricatorsltd/go-wormhole/cmd/wormhole@latest
+   wormhole init
    ```
 
-2. **Navigate to your Go project** that contains models with `db` tags:
+2. **Import your database drivers:**
+   Edit `wormhole_migrations_gen.go`:
+   ```go
+   // Import your database drivers here
+   _ "github.com/lib/pq"                    // PostgreSQL
+   _ "github.com/go-sql-driver/mysql"       // MySQL  
+   _ "github.com/denisenkom/go-mssqldb"     // SQL Server
+   _ "github.com/glebarez/sqlite"           // SQLite (pure Go)
+   ```
+
+3. **Define your models:**
    ```go
    type User struct {
        ID   int    `db:"primary_key;auto_increment"`
        Name string `db:"column:name"`
-       Email string `db:"column:email;nullable"`
+       Age  int    `db:"column:age"`
    }
    ```
 
-3. **Generate a migration:**
+4. **Generate migration:**
    ```bash
-   export WORMHOLE_DSN="./app.db"
-   wormhole migrations add CreateUserTable
+   wormhole migrations add CreateUser
    ```
 
-4. **Apply migrations:**
+5. **Apply migrations:**
    ```bash
    wormhole database update
    ```
+
+## How It Works
+
+The CLI uses build tags to compile **your project** with **your database drivers**:
+
+1. `wormhole init` creates `wormhole_migrations_gen.go` in your project
+2. This file has the build tag `//go:build wormhole_gen_migrations` 
+3. When you run `wormhole migrations add`, it executes:
+   ```bash
+   go build -tags wormhole_gen_migrations -o temp_migrator .
+   ./temp_migrator -action=add -name=CreateUser
+   rm temp_migrator
+   ```
+
+This is **exactly like Entity Framework**: it uses your project's providers, not global ones.
 
 ## Environment Variables
 
 - `WORMHOLE_DSN`: Database connection string (required)
 - `WORMHOLE_DRIVER`: SQL driver name (default: sqlite)
 - `WORMHOLE_DIR`: Migrations directory (default: ./migrations)
+
+## Database Provider Configuration
+
+### SQLite (Default)
+```bash
+export WORMHOLE_DRIVER=sqlite
+export WORMHOLE_DSN=./myapp.db
+```
+
+### PostgreSQL
+```bash
+export WORMHOLE_DRIVER=postgres
+export WORMHOLE_DSN="host=localhost user=postgres password=mypassword dbname=myapp sslmode=disable"
+```
+
+### MySQL
+```bash
+export WORMHOLE_DRIVER=mysql
+export WORMHOLE_DSN="user:password@tcp(localhost:3306)/myapp?parseTime=true"
+```
+
+### SQL Server
+```bash
+export WORMHOLE_DRIVER=sqlserver
+export WORMHOLE_DSN="server=localhost;user id=sa;password=MyPassword;database=myapp"
+```
 
 ## Supported Workflows
 
