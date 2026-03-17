@@ -3,7 +3,7 @@
 An Entity Framework-inspired ORM / Data Mapper for Go, built on top of
 [go-foundation](https://github.com/mirkobrombin/go-foundation).
 
-**Type-safe queries · Zero code generation · Dual SQL/NoSQL backends · Code-First Migrations**
+**Type-safe queries · Zero code generation · Dual SQL/NoSQL backends · Code-First Migrations · NO CGO**
 
 ```go
 dsl.Register(User{})
@@ -15,8 +15,24 @@ u.Age = 35
 ctx.Save()  // → UPDATE "users" SET "age" = ? WHERE "id" = ?
 ```
 
+## ⚡ Install as Global CLI Tool
+
+Install once, use everywhere like Entity Framework:
+
+```bash
+go install github.com/fabricatorsltd/go-wormhole/cmd/wormhole@latest
+
+# Use in any Go project with models
+export WORMHOLE_DSN="./app.db"
+wormhole migrations add CreateUserTable
+wormhole database update
+```
+
 ## Features
 
+- **🚀 NO CGO** — Pure Go, cross-platform compatible, easy deployment
+- **Global CLI Tool** — Install once with `go install`, use anywhere like `dotnet ef`
+- **Auto-Discovery** — Automatically finds models with `db` tags in your project
 - **Pointer-tracking DSL** — compile-time type-safe queries, no code generation
 - **Change Tracker** — Unit of Work with partial UPDATE (only changed columns)
 - **SQL + NoSQL** — pluggable providers for PostgreSQL, SQLite, MySQL, MongoDB, Slipstream (Bitcask), MemDoc (in-memory)
@@ -39,6 +55,17 @@ ctx.Save()  // → UPDATE "users" SET "age" = ? WHERE "id" = ?
 | [06 — Resilience](docs/06-resilience.md) | Retry, circuit breaker, MultiError |
 | [07 — Architecture](docs/07-architecture.md) | Internals, data flows, design decisions |
 | [08 — Relationships](docs/08-relationships.md) | 1:1, 1:N, N:M declarations, eager loading with Include |
+| [09 — Global CLI Tool](docs/09-global-cli.md) | Entity Framework-like CLI experience |
+
+## Entity Framework Comparison
+
+| Entity Framework | go-wormhole |
+|------------------|-------------|
+| `dotnet ef migrations add` | `wormhole migrations add` |
+| `dotnet ef database update` | `wormhole database update` |
+| `dotnet ef migrations list` | `wormhole migrations list` |
+| `dotnet ef migrations script` | `wormhole migrations script` |
+| `dotnet ef dbcontext scaffold` | `wormhole dbcontext scaffold` |
 
 ## License
 

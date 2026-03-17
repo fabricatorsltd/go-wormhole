@@ -52,9 +52,9 @@ type Dialect interface {
 type DefaultDialect struct{}
 
 func (DefaultDialect) QuoteIdent(s string) string         { return `"` + s + `"` }
-func (DefaultDialect) AutoIncrementClause() string         { return "AUTOINCREMENT" }
-func (DefaultDialect) AutoIncrementType(string) string     { return "" }
-func (DefaultDialect) SupportsIfNotExists() bool           { return true }
+func (DefaultDialect) AutoIncrementClause() string        { return "AUTOINCREMENT" }
+func (DefaultDialect) AutoIncrementType(string) string    { return "" }
+func (DefaultDialect) SupportsIfNotExists() bool          { return true }
 func (DefaultDialect) ColumnName(fieldName string) string { return strings.ToLower(fieldName) } // Default to lowercase for simple cases
 
 // NewBuilder creates a SchemaBuilder with the default dialect.

@@ -7,10 +7,10 @@ import (
 	"sync"
 	"testing"
 
-	_ "github.com/glebarez/sqlite"
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
 	"github.com/fabricatorsltd/go-wormhole/pkg/query"
 	wsql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
+	_ "github.com/glebarez/sqlite"
 )
 
 func setupLoggerTestDB(t *testing.T) *sql.DB {
