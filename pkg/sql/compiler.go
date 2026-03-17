@@ -281,6 +281,8 @@ func (c *Compiler) compilePredicate(b *strings.Builder, params *[]any, p query.P
 		*params = append(*params, p.Value)
 	case query.OpIsNil:
 		b.WriteString(" IS NULL")
+	case query.OpIsNotNil:
+		b.WriteString(" IS NOT NULL")
 	case query.OpIn:
 		items, ok := p.Value.([]any)
 		if !ok {

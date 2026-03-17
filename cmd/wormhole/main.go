@@ -122,7 +122,7 @@ Example:
 
 func initProject() {
 	generatorPath := "wormhole_migrations_gen.go"
-	
+
 	if _, err := os.Stat(generatorPath); err == nil {
 		fmt.Printf("File %s already exists.\n", generatorPath)
 		return
@@ -702,7 +702,7 @@ func runWithBuildTags(action, name string, extraArgs ...string) {
 	buildCmd := exec.Command("go", "build", "-tags", "wormhole_gen_migrations", "-o", tempBinary, ".")
 	buildCmd.Stdout = os.Stdout
 	buildCmd.Stderr = os.Stderr
-	
+
 	if err := buildCmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error building migration runner: %v\n", err)
 		fmt.Fprintln(os.Stderr, "Make sure your wormhole_migrations_gen.go file is valid and your project compiles.")

@@ -103,6 +103,14 @@ func TestIsNil(t *testing.T) {
 	}
 }
 
+func TestIsNotNil(t *testing.T) {
+	u := &User{}
+	cond := dsl.IsNotNil(u, &u.Age)
+	if cond.Field != "age" || cond.Op != query.OpIsNotNil {
+		t.Fatalf("IsNotNil: unexpected %+v", cond)
+	}
+}
+
 func TestEqOnUntaggedField(t *testing.T) {
 	p := &Profile{}
 	cond := dsl.Eq(p, &p.Score, 9.5)
