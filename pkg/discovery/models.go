@@ -66,7 +66,7 @@ func parseGoFile(filePath string) ([]*model.EntityMeta, error) {
 	}
 
 	var models []*model.EntityMeta
-	
+
 	// Walk the AST to find structs with db tags
 	ast.Inspect(node, func(n ast.Node) bool {
 		switch x := n.(type) {
@@ -187,12 +187,12 @@ func toSnakeCase(s string) string {
 	if s == "" {
 		return ""
 	}
-	
+
 	// Special case for common abbreviations
 	if s == "ID" {
 		return "id"
 	}
-	
+
 	var result strings.Builder
 	for i, r := range s {
 		if i > 0 && r >= 'A' && r <= 'Z' {

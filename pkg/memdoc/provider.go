@@ -597,6 +597,8 @@ func matchPredicate(doc document, p query.Predicate) bool {
 		return fmt.Sprintf("%v", val) != fmt.Sprintf("%v", p.Value)
 	case query.OpIsNil:
 		return val == nil
+	case query.OpIsNotNil:
+		return val != nil
 	case query.OpIn:
 		return matchIn(val, p.Value)
 	case query.OpGt, query.OpGte, query.OpLt, query.OpLte:

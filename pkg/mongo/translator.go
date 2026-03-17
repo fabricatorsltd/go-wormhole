@@ -101,6 +101,8 @@ func buildPredicate(p query.Predicate) (bson.D, error) {
 		return bson.D{{Key: p.Field, Value: bson.D{{Key: "$regex", Value: pattern}}}}, nil
 	case query.OpIsNil:
 		return bson.D{{Key: p.Field, Value: nil}}, nil
+	case query.OpIsNotNil:
+		return bson.D{{Key: p.Field, Value: bson.D{{Key: "$ne", Value: nil}}}}, nil
 	default:
 		return nil, fmt.Errorf("unsupported predicate op %v", p.Op)
 	}
