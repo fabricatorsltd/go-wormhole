@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	_ "github.com/glebarez/sqlite"
 
@@ -444,7 +445,40 @@ func TestGoTypeToSQL(t *testing.T) {
 	}
 }
 
-// --- Full E2E: differ -> builder -> runner -> real DB ---
+func TestGoTypeToSQL_Time(t *testing.T) {
+	got := migrations.GoTypeToSQL(reflect.TypeOf(time.Time{}))
+	if got != "TIMESTAMPTZ" {
+		t.Errorf("GoTypeToSQL(time.Time) = %q, want TIMESTAMPTZ", got)
+	}
+}
+
+func TestAlterColumn_Using(t *testing.T) {
+	b := migrations.NewBuilder()
+	b.AlterColumn("user", migrations.ColumnDef{
+		Name:    "created_at",
+		SQLType: "timestamptz",
+		Nullable: true,
+		Using:   `NULLIF("created_at", '')::timestamptz`,
+	})
+	stmts := b.Statements()
+	if len(stmts) != 1 {
+		t.Fatalf("expected 1 statement, got %d", len(stmts))
+	}
+	want := `ALTER TABLE "user" ALTER COLUMN "created_at" TYPE TIMESTAMPTZ USING NULLIF("created_at", '')::timestamptz`
+	if stmts[0] != want {
+		t.Errorf("AlterColumn USING mismatch:\n got:  %s\n want: %s", stmts[0], want)
+	}
+}
+
+func TestAlterColumn_NoUsing(t *testing.T) {
+	b := migrations.NewBuilder()
+	b.AlterColumn("token", migrations.ColumnDef{Name: "expires_at", SQLType: "timestamptz", Nullable: true})
+	stmts := b.Statements()
+	want := `ALTER TABLE "token" ALTER COLUMN "expires_at" TYPE TIMESTAMPTZ`
+	if stmts[0] != want {
+		t.Errorf("AlterColumn without USING mismatch:\n got:  %s\n want: %s", stmts[0], want)
+	}
+}
 
 func TestE2EDifferToRunner(t *testing.T) {
 	db := openTestDB(t)

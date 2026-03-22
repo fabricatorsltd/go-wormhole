@@ -144,8 +144,12 @@ func (b *SchemaBuilder) renderOp(op MigrationOp) string {
 					q(o.Table), q(o.Column.Name), b.resolveType(o.Column))
 			}
 		}
-		return fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s",
+		stmt := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s",
 			q(o.Table), q(o.Column.Name), b.resolveType(o.Column))
+		if o.Column.Using != "" {
+			stmt += " USING " + o.Column.Using
+		}
+		return stmt
 	case CreateIndexOp:
 		u := ""
 		if o.Unique {
@@ -225,6 +229,14 @@ func (b *SchemaBuilder) resolveType(c ColumnDef) string {
 func GoTypeToSQL(t reflect.Type) string {
 	if t == nil {
 		return "TEXT"
+	}
+	// time.Time → TIMESTAMPTZ
+	if t == reflect.TypeOf((*interface{ UnixNano() int64 })(nil)).Elem() {
+		return "TIMESTAMPTZ"
+	}
+	// Named type check: time.Time is a struct in the "time" package
+	if t.Kind() == reflect.Struct && t.PkgPath() == "time" && t.Name() == "Time" {
+		return "TIMESTAMPTZ"
 	}
 	switch t.Kind() {
 	case reflect.Int, reflect.Int32, reflect.Int16, reflect.Int8:

@@ -12,6 +12,10 @@ type ColumnDef struct {
 	Default    string // literal default expression, e.g. "'active'"
 	Index      string // secondary index name (empty = none)
 	GoType     reflect.Type
+	// Using is an optional USING expression appended to ALTER COLUMN TYPE.
+	// Required when Postgres cannot auto-cast the existing type (e.g. TEXT → TIMESTAMPTZ).
+	// Example: `NULLIF("created_at", '')::timestamptz`
+	Using string
 }
 
 // --- Migration operations ---
