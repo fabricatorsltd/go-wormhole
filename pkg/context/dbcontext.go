@@ -289,21 +289,30 @@ func (c *DbContext) PendingSQL() ([]PendingChange, error) {
 		switch e.State {
 		case model.Added:
 			pc.Operation = "INSERT"
-			cq := exp.ExplainInsert(e.Meta, e.Entity)
+			cq, err := exp.ExplainInsert(e.Meta, e.Entity)
+			if err != nil {
+				return nil, err
+			}
 			pc.SQL = cq.SQL
 			pc.Params = cq.Params
 
 		case model.Modified:
 			pc.Operation = "UPDATE"
 			changed := tracker.ChangedFields(e)
-			cq := exp.ExplainUpdate(e.Meta, e.Entity, changed)
+			cq, err := exp.ExplainUpdate(e.Meta, e.Entity, changed)
+			if err != nil {
+				return nil, err
+			}
 			pc.SQL = cq.SQL
 			pc.Params = cq.Params
 
 		case model.Deleted:
 			pc.Operation = "DELETE"
 			pk := c.pkValue(e)
-			cq := exp.ExplainDelete(e.Meta, pk)
+			cq, err := exp.ExplainDelete(e.Meta, pk)
+			if err != nil {
+				return nil, err
+			}
 			pc.SQL = cq.SQL
 			pc.Params = cq.Params
 

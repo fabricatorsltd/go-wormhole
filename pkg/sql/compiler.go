@@ -40,21 +40,63 @@ func (c *Compiler) Select(meta *model.EntityMeta, q query.Query) Compiled {
 	if c.UseTOP && q.Limit > 0 && q.Offset == 0 {
 		b.WriteString(fmt.Sprintf("TOP %d ", q.Limit))
 	}
-	for i, f := range meta.Fields {
-		if i > 0 {
-			b.WriteString(", ")
+
+	if len(q.Aggregates) > 0 {
+		// Aggregate query: emit GROUP BY fields first, then aggregate expressions.
+		first := true
+		for _, field := range q.GroupBy {
+			if !first {
+				b.WriteString(", ")
+			}
+			b.WriteString(c.quote(fieldColumn(meta, field)))
+			first = false
 		}
-		b.WriteString(c.quote(f.Column))
+		for _, agg := range q.Aggregates {
+			if !first {
+				b.WriteString(", ")
+			}
+			b.WriteString(c.compileAggregate(meta, agg))
+			first = false
+		}
+	} else {
+		for i, f := range meta.Fields {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(c.quote(f.Column))
+		}
 	}
 
-	// FROM
+	// FROM — use the entity name carried in the query so that aggregate
+	// queries can pass a custom result-struct meta without affecting the table.
 	b.WriteString(" FROM ")
-	b.WriteString(c.quote(meta.Name))
+	entityName := q.EntityName
+	if entityName == "" {
+		entityName = meta.Name
+	}
+	b.WriteString(c.quote(entityName))
 
 	// WHERE
 	if q.Where != nil {
 		b.WriteString(" WHERE ")
 		c.compileNode(&b, &params, q.Where)
+	}
+
+	// GROUP BY
+	if len(q.GroupBy) > 0 {
+		b.WriteString(" GROUP BY ")
+		for i, field := range q.GroupBy {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(c.quote(fieldColumn(meta, field)))
+		}
+	}
+
+	// HAVING
+	if q.Having != nil {
+		b.WriteString(" HAVING ")
+		c.compileNode(&b, &params, q.Having)
 	}
 
 	// ORDER BY
@@ -237,6 +279,36 @@ type JoinSpec struct {
 
 // --- internal ---
 
+// compileAggregate renders a single aggregate expression, e.g. COUNT(*) AS "total".
+func (c *Compiler) compileAggregate(meta *model.EntityMeta, agg query.Aggregate) string {
+	var fn string
+	switch agg.Func {
+	case query.AggSum:
+		fn = "SUM"
+	case query.AggAvg:
+		fn = "AVG"
+	case query.AggMin:
+		fn = "MIN"
+	case query.AggMax:
+		fn = "MAX"
+	default: // AggCount
+		fn = "COUNT"
+	}
+
+	field := agg.Field
+	if field == "" || field == "*" {
+		field = "*"
+	} else {
+		field = c.quote(fieldColumn(meta, field))
+	}
+
+	result := fmt.Sprintf("%s(%s)", fn, field)
+	if agg.Alias != "" {
+		result += " AS " + c.quote(agg.Alias)
+	}
+	return result
+}
+
 func (c *Compiler) compileNode(b *strings.Builder, params *[]any, node query.Node) {
 	switch n := node.(type) {
 	case query.Predicate:
@@ -340,6 +412,9 @@ func quoteIdent(s string) string {
 
 func fieldColumn(meta *model.EntityMeta, fieldName string) string {
 	if f := meta.Field(fieldName); f != nil {
+		return f.Column
+	}
+	if f := meta.FieldByColumn(fieldName); f != nil {
 		return f.Column
 	}
 	return fieldName

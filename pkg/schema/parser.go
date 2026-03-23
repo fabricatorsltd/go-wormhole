@@ -12,8 +12,9 @@ import (
 const tagName = "db"
 
 var (
-	parser *tags.Parser
-	cache  sync.Map // reflect.Type → *model.EntityMeta
+	parser    *tags.Parser
+	cache     sync.Map // reflect.Type → *model.EntityMeta
+	nameCache sync.Map // entity name → *model.EntityMeta
 )
 
 func init() {
@@ -79,5 +80,14 @@ func ParseType(t reflect.Type) *model.EntityMeta {
 
 	meta.BuildIndex()
 	cache.Store(t, meta)
+	nameCache.Store(meta.Name, meta)
 	return meta
+}
+
+// LookupEntity returns cached metadata by entity name, when available.
+func LookupEntity(name string) *model.EntityMeta {
+	if m, ok := nameCache.Load(name); ok {
+		return m.(*model.EntityMeta)
+	}
+	return nil
 }

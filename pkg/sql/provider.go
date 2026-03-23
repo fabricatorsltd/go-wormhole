@@ -189,7 +189,8 @@ func (p *Provider) Find(ctx context.Context, meta *model.EntityMeta, pkValue any
 // --- Query ---
 
 func (p *Provider) Execute(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error {
-	if err := provider.ValidateQueryCapabilities(p.Capabilities(), q); err != nil {
+	q, err := provider.ValidateQueryCapabilities(meta, p.Capabilities(), q)
+	if err != nil {
 		return err
 	}
 	c := p.compiler.Select(meta, q)
@@ -206,32 +207,36 @@ func (p *Provider) Execute(ctx context.Context, meta *model.EntityMeta, q query.
 
 // --- QueryExplainer (dry-run) ---
 
-func (p *Provider) ExplainSelect(meta *model.EntityMeta, q query.Query) provider.CompiledQuery {
+func (p *Provider) ExplainSelect(meta *model.EntityMeta, q query.Query) (provider.CompiledQuery, error) {
+	q, err := provider.ValidateQueryCapabilities(meta, p.Capabilities(), q)
+	if err != nil {
+		return provider.CompiledQuery{}, err
+	}
 	c := p.compiler.Select(meta, q)
-	return provider.CompiledQuery{SQL: c.SQL, Params: c.Params}
+	return provider.CompiledQuery{SQL: c.SQL, Params: c.Params}, nil
 }
 
-func (p *Provider) ExplainFindByPK(meta *model.EntityMeta, pkValue any) provider.CompiledQuery {
+func (p *Provider) ExplainFindByPK(meta *model.EntityMeta, pkValue any) (provider.CompiledQuery, error) {
 	c := p.compiler.FindByPK(meta, pkValue)
-	return provider.CompiledQuery{SQL: c.SQL, Params: c.Params}
+	return provider.CompiledQuery{SQL: c.SQL, Params: c.Params}, nil
 }
 
-func (p *Provider) ExplainInsert(meta *model.EntityMeta, entity any) provider.CompiledQuery {
+func (p *Provider) ExplainInsert(meta *model.EntityMeta, entity any) (provider.CompiledQuery, error) {
 	values := structToMap(meta, entity)
 	c := p.compiler.Insert(meta, values)
-	return provider.CompiledQuery{SQL: c.SQL, Params: c.Params}
+	return provider.CompiledQuery{SQL: c.SQL, Params: c.Params}, nil
 }
 
-func (p *Provider) ExplainUpdate(meta *model.EntityMeta, entity any, changed []string) provider.CompiledQuery {
+func (p *Provider) ExplainUpdate(meta *model.EntityMeta, entity any, changed []string) (provider.CompiledQuery, error) {
 	values := structToMap(meta, entity)
 	pk := pkFromStruct(meta, entity)
 	c := p.compiler.Update(meta, values, changed, pk)
-	return provider.CompiledQuery{SQL: c.SQL, Params: c.Params}
+	return provider.CompiledQuery{SQL: c.SQL, Params: c.Params}, nil
 }
 
-func (p *Provider) ExplainDelete(meta *model.EntityMeta, pkValue any) provider.CompiledQuery {
+func (p *Provider) ExplainDelete(meta *model.EntityMeta, pkValue any) (provider.CompiledQuery, error) {
 	c := p.compiler.Delete(meta, pkValue)
-	return provider.CompiledQuery{SQL: c.SQL, Params: c.Params}
+	return provider.CompiledQuery{SQL: c.SQL, Params: c.Params}, nil
 }
 
 // --- Transactions ---
@@ -322,6 +327,19 @@ func (t *sqlTx) Find(ctx context.Context, meta *model.EntityMeta, pkValue any, d
 }
 
 func (t *sqlTx) Execute(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error {
+	var err error
+	q, err = provider.ValidateQueryCapabilities(meta, provider.Capabilities{
+		Transactions:     true,
+		Aggregations:     true,
+		NestedFilters:    true,
+		PartialUpdate:    true,
+		Sorting:          true,
+		OffsetPagination: true,
+		SchemaMigrations: true,
+	}, q)
+	if err != nil {
+		return err
+	}
 	c := t.compiler.Select(meta, q)
 	t.logQuery(c)
 	rows, err := t.tx.QueryContext(ctx, c.SQL, c.Params...)
