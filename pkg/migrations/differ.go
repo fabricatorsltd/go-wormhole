@@ -73,12 +73,12 @@ func diffColumns(meta *model.EntityMeta, table *TableSchema) []MigrationOp {
 
 		// Column exists — check for type/constraint changes
 		newDef := fieldToColumnDef(f)
+		// Preserve the introspected DB type when the model did not
+		// explicitly override it via a `type:` tag.
+		if newDef.SQLType == "" && existing.SQLType != "" {
+			newDef.SQLType = existing.SQLType
+		}
 		if columnChanged(existing, &newDef) {
-			// Preserve the introspected DB type when the model did not
-			// explicitly override it via a `type:` tag.
-			if newDef.SQLType == "" && existing.SQLType != "" {
-				newDef.SQLType = existing.SQLType
-			}
 			ops = append(ops, AlterColumnOp{
 				Table:  meta.Name,
 				Column: newDef,

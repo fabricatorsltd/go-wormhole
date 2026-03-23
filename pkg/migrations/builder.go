@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 )
 
 // SchemaBuilder accumulates DDL operations and can render them as SQL.
@@ -225,6 +226,12 @@ func (b *SchemaBuilder) resolveType(c ColumnDef) string {
 func GoTypeToSQL(t reflect.Type) string {
 	if t == nil {
 		return "TEXT"
+	}
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	if t == reflect.TypeOf(time.Time{}) {
+		return "TIMESTAMP"
 	}
 	switch t.Kind() {
 	case reflect.Int, reflect.Int32, reflect.Int16, reflect.Int8:
