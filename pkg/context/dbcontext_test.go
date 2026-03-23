@@ -93,24 +93,24 @@ func (t mockTx) Execute(ctx stdctx.Context, meta *model.EntityMeta, q query.Quer
 
 // --- QueryExplainer on mock ---
 
-func (m *mockProvider) ExplainSelect(meta *model.EntityMeta, q query.Query) provider.CompiledQuery {
-	return provider.CompiledQuery{SQL: "SELECT FROM " + meta.Name, Params: nil}
+func (m *mockProvider) ExplainSelect(meta *model.EntityMeta, q query.Query) (provider.CompiledQuery, error) {
+	return provider.CompiledQuery{SQL: "SELECT FROM " + meta.Name, Params: nil}, nil
 }
 
-func (m *mockProvider) ExplainFindByPK(meta *model.EntityMeta, pkValue any) provider.CompiledQuery {
-	return provider.CompiledQuery{SQL: "SELECT FROM " + meta.Name + " WHERE pk=?", Params: []any{pkValue}}
+func (m *mockProvider) ExplainFindByPK(meta *model.EntityMeta, pkValue any) (provider.CompiledQuery, error) {
+	return provider.CompiledQuery{SQL: "SELECT FROM " + meta.Name + " WHERE pk=?", Params: []any{pkValue}}, nil
 }
 
-func (m *mockProvider) ExplainInsert(meta *model.EntityMeta, entity any) provider.CompiledQuery {
-	return provider.CompiledQuery{SQL: "INSERT INTO " + meta.Name, Params: []any{"mock"}}
+func (m *mockProvider) ExplainInsert(meta *model.EntityMeta, entity any) (provider.CompiledQuery, error) {
+	return provider.CompiledQuery{SQL: "INSERT INTO " + meta.Name, Params: []any{"mock"}}, nil
 }
 
-func (m *mockProvider) ExplainUpdate(meta *model.EntityMeta, entity any, changed []string) provider.CompiledQuery {
-	return provider.CompiledQuery{SQL: "UPDATE " + meta.Name, Params: []any{"mock"}}
+func (m *mockProvider) ExplainUpdate(meta *model.EntityMeta, entity any, changed []string) (provider.CompiledQuery, error) {
+	return provider.CompiledQuery{SQL: "UPDATE " + meta.Name, Params: []any{"mock"}}, nil
 }
 
-func (m *mockProvider) ExplainDelete(meta *model.EntityMeta, pkValue any) provider.CompiledQuery {
-	return provider.CompiledQuery{SQL: "DELETE FROM " + meta.Name + " WHERE pk=?", Params: []any{pkValue}}
+func (m *mockProvider) ExplainDelete(meta *model.EntityMeta, pkValue any) (provider.CompiledQuery, error) {
+	return provider.CompiledQuery{SQL: "DELETE FROM " + meta.Name + " WHERE pk=?", Params: []any{pkValue}}, nil
 }
 
 // --- test entities ---

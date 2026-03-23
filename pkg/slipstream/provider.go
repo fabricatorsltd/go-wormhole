@@ -123,7 +123,7 @@ func (p *Provider) Find(ctx context.Context, meta *model.EntityMeta, pkValue any
 // --- Query ---
 
 func (p *Provider) Execute(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error {
-	if err := provider.ValidateQueryCapabilities(p.Capabilities(), q); err != nil {
+	if _, err := provider.ValidateQueryCapabilities(meta, p.Capabilities(), q); err != nil {
 		return err
 	}
 	return p.executeQuery(ctx, meta, q, dest)
@@ -188,7 +188,7 @@ func (t *slipTx) Find(ctx context.Context, meta *model.EntityMeta, pkValue any, 
 }
 
 func (t *slipTx) Execute(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error {
-	if err := provider.ValidateQueryCapabilities(slipstreamCapabilities, q); err != nil {
+	if _, err := provider.ValidateQueryCapabilities(meta, slipstreamCapabilities, q); err != nil {
 		return err
 	}
 	return executeQueryOnEngine(ctx, t.eng, nil, meta, q, dest)

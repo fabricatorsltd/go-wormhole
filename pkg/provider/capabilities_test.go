@@ -3,6 +3,7 @@ package provider_test
 import (
 	"testing"
 
+	"github.com/fabricatorsltd/go-wormhole/pkg/model"
 	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
 	"github.com/fabricatorsltd/go-wormhole/pkg/query"
 	"github.com/fabricatorsltd/go-wormhole/pkg/slipstream"
@@ -57,29 +58,100 @@ func TestDetectCapabilities_Slipstream(t *testing.T) {
 
 func TestValidateQueryCapabilities(t *testing.T) {
 	qSorted := query.From("users").OrderBy("name", query.Asc).Build()
-	err := provider.ValidateQueryCapabilities(provider.Capabilities{Sorting: false}, qSorted)
+	_, err := provider.ValidateQueryCapabilities(nil, provider.Capabilities{Sorting: false}, qSorted)
 	if err == nil {
 		t.Fatal("expected sorting capability error")
 	}
 
 	qInclude := query.From("users").Include("orders").Build()
-	err = provider.ValidateQueryCapabilities(provider.Capabilities{Aggregations: false}, qInclude)
+	_, err = provider.ValidateQueryCapabilities(nil, provider.Capabilities{Aggregations: false}, qInclude)
 	if err == nil {
 		t.Fatal("expected include capability error")
 	}
 
 	qOffset := query.From("users").Offset(10).Build()
-	err = provider.ValidateQueryCapabilities(provider.Capabilities{OffsetPagination: false}, qOffset)
+	_, err = provider.ValidateQueryCapabilities(nil, provider.Capabilities{OffsetPagination: false}, qOffset)
 	if err == nil {
 		t.Fatal("expected offset capability error")
 	}
 
 	qOK := query.From("users").OrderBy("name", query.Asc).Offset(1).Build()
-	err = provider.ValidateQueryCapabilities(provider.Capabilities{
+	_, err = provider.ValidateQueryCapabilities(nil, provider.Capabilities{
 		Sorting:          true,
 		OffsetPagination: true,
 	}, qOK)
 	if err != nil {
 		t.Fatalf("unexpected validation error: %v", err)
 	}
+}
+
+func TestValidateQueryCapabilities_AggregateValidation(t *testing.T) {
+	meta := &model.EntityMeta{
+		Name: "users",
+		Fields: []model.FieldMeta{
+			{FieldName: "ID", Column: "id"},
+			{FieldName: "Age", Column: "age"},
+			{FieldName: "Name", Column: "name"},
+		},
+	}
+	meta.BuildIndex()
+
+	caps := provider.Capabilities{Sorting: true, OffsetPagination: true, Aggregations: true}
+
+	t.Run("normalizes valid aggregate query", func(t *testing.T) {
+		q := query.From("users").
+			GroupBy("Age").
+			Aggregate(query.AggCount, "*", "count").
+			Having(query.Predicate{Field: "Age", Op: query.OpGt, Value: 18}).
+			OrderBy("Age", query.Asc).
+			Build()
+
+		normalized, err := provider.ValidateQueryCapabilities(meta, caps, q)
+		if err != nil {
+			t.Fatalf("unexpected validation error: %v", err)
+		}
+		if normalized.GroupBy[0] != "age" {
+			t.Fatalf("group by not normalized: %#v", normalized.GroupBy)
+		}
+		having, ok := normalized.Having.(query.Predicate)
+		if !ok || having.Field != "age" {
+			t.Fatalf("having not normalized: %#v", normalized.Having)
+		}
+		if normalized.OrderBy[0].Field != "age" {
+			t.Fatalf("order by not normalized: %#v", normalized.OrderBy)
+		}
+	})
+
+	t.Run("rejects invalid group by field", func(t *testing.T) {
+		q := query.From("users").
+			GroupBy("missing").
+			Aggregate(query.AggCount, "*", "count").
+			Build()
+
+		if _, err := provider.ValidateQueryCapabilities(meta, caps, q); err == nil {
+			t.Fatal("expected invalid GROUP BY field error")
+		}
+	})
+
+	t.Run("rejects invalid aggregate field", func(t *testing.T) {
+		q := query.From("users").
+			Aggregate(query.AggSum, "missing", "total").
+			Build()
+
+		if _, err := provider.ValidateQueryCapabilities(meta, caps, q); err == nil {
+			t.Fatal("expected invalid aggregate field error")
+		}
+	})
+
+	t.Run("rejects undefined having alias", func(t *testing.T) {
+		q := query.From("users").
+			GroupBy("age").
+			Aggregate(query.AggCount, "*", "count").
+			Having(query.Predicate{Field: "missing", Op: query.OpGt, Value: 1}).
+			Build()
+
+		if _, err := provider.ValidateQueryCapabilities(meta, caps, q); err == nil {
+			t.Fatal("expected invalid HAVING reference error")
+		}
+	})
 }

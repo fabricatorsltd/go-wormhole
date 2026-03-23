@@ -232,7 +232,10 @@ func TestExplainSelect(t *testing.T) {
 		Limit(5).
 		Build()
 
-	c := p.ExplainSelect(meta, q)
+	c, err := p.ExplainSelect(meta, q)
+	if err != nil {
+		t.Fatalf("ExplainSelect: %v", err)
+	}
 
 	if !strings.Contains(c.SQL, "SELECT") {
 		t.Fatalf("expected SELECT: %s", c.SQL)
@@ -258,7 +261,10 @@ func TestExplainInsert(t *testing.T) {
 		Age  int
 	}{Name: "test", Age: 42}
 
-	c := p.ExplainInsert(meta, entity)
+	c, err := p.ExplainInsert(meta, entity)
+	if err != nil {
+		t.Fatalf("ExplainInsert: %v", err)
+	}
 
 	if !strings.Contains(c.SQL, "INSERT") {
 		t.Fatalf("expected INSERT: %s", c.SQL)
@@ -275,7 +281,10 @@ func TestExplainFindByPK(t *testing.T) {
 	p := wsql.New(db)
 	meta := loggerTestMeta()
 
-	c := p.ExplainFindByPK(meta, 7)
+	c, err := p.ExplainFindByPK(meta, 7)
+	if err != nil {
+		t.Fatalf("ExplainFindByPK: %v", err)
+	}
 
 	if !strings.Contains(c.SQL, "SELECT") {
 		t.Fatalf("expected SELECT: %s", c.SQL)
@@ -292,7 +301,10 @@ func TestExplainDelete(t *testing.T) {
 	p := wsql.New(db)
 	meta := loggerTestMeta()
 
-	c := p.ExplainDelete(meta, 99)
+	c, err := p.ExplainDelete(meta, 99)
+	if err != nil {
+		t.Fatalf("ExplainDelete: %v", err)
+	}
 
 	if !strings.Contains(c.SQL, "DELETE") {
 		t.Fatalf("expected DELETE: %s", c.SQL)
@@ -315,7 +327,10 @@ func TestExplainUpdate(t *testing.T) {
 		Age  int
 	}{ID: 1, Name: "updated", Age: 50}
 
-	c := p.ExplainUpdate(meta, entity, []string{"Name"})
+	c, err := p.ExplainUpdate(meta, entity, []string{"Name"})
+	if err != nil {
+		t.Fatalf("ExplainUpdate: %v", err)
+	}
 
 	if !strings.Contains(c.SQL, "UPDATE") {
 		t.Fatalf("expected UPDATE: %s", c.SQL)

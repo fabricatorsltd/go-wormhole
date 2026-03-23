@@ -30,6 +30,27 @@ type Sort struct {
 	Dir   SortDir
 }
 
+// AggFunc is the type of an aggregate function.
+type AggFunc int
+
+const (
+	AggCount AggFunc = iota // COUNT
+	AggSum                  // SUM
+	AggAvg                  // AVG
+	AggMin                  // MIN
+	AggMax                  // MAX
+)
+
+// Aggregate represents an aggregate expression in a SELECT clause
+// (e.g. COUNT(*) AS total, SUM(amount) AS revenue).
+// Field may be "*" or empty for COUNT(*); otherwise it names the column.
+// Alias is the AS label used to match the result column to a destination field.
+type Aggregate struct {
+	Func  AggFunc
+	Field string // column name or "*"/"" for COUNT(*)
+	Alias string // AS alias
+}
+
 // Query is the root AST produced by the fluent QueryBuilder.
 type Query struct {
 	EntityName string
@@ -37,5 +58,8 @@ type Query struct {
 	OrderBy    []Sort
 	Limit      int
 	Offset     int
-	Includes   []string // eager-loaded relations
+	Includes   []string   // eager-loaded relations
+	GroupBy    []string   // GROUP BY field names
+	Having     Node       // HAVING condition tree
+	Aggregates []Aggregate // aggregate expressions (COUNT, SUM, …)
 }
