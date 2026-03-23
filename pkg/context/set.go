@@ -13,14 +13,14 @@ import (
 // EntitySet provides a fluent API for querying and managing entities
 // of a single type through the DbContext.
 type EntitySet struct {
-	ctx        *DbContext
-	dest       any
-	meta       *model.EntityMeta
-	preds      []query.Predicate
-	sorts      []query.Sort
-	lim        int
-	off        int
-	groupBy    []string
+	ctx         *DbContext
+	dest        any
+	meta        *model.EntityMeta
+	preds       []query.Predicate
+	sorts       []query.Sort
+	lim         int
+	off         int
+	groupBy     []string
 	havingPreds []query.Predicate
 	aggregates  []query.Aggregate
 }
@@ -138,7 +138,10 @@ func (s *EntitySet) ToSQL() (string, []any, error) {
 	}
 
 	q := s.buildQuery()
-	c := exp.ExplainSelect(s.meta, q)
+	c, err := exp.ExplainSelect(s.meta, q)
+	if err != nil {
+		return "", nil, err
+	}
 	return c.SQL, c.Params, nil
 }
 

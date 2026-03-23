@@ -122,7 +122,7 @@ func (p *Provider) Find(ctx context.Context, meta *model.EntityMeta, pkValue any
 }
 
 func (p *Provider) Execute(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error {
-	if err := provider.ValidateQueryCapabilities(p.Capabilities(), q); err != nil {
+	if _, err := provider.ValidateQueryCapabilities(meta, p.Capabilities(), q); err != nil {
 		return err
 	}
 
@@ -207,7 +207,7 @@ func (t *mongoTx) Find(ctx context.Context, meta *model.EntityMeta, pkValue any,
 }
 
 func (t *mongoTx) Execute(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error {
-	if err := provider.ValidateQueryCapabilities(mongoCapabilities, q); err != nil {
+	if _, err := provider.ValidateQueryCapabilities(meta, mongoCapabilities, q); err != nil {
 		return err
 	}
 	filter, err := BuildFilter(q.Where)

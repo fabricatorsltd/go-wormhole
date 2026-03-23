@@ -181,7 +181,7 @@ func (p *Provider) Find(ctx context.Context, meta *model.EntityMeta, pkValue any
 
 func (p *Provider) Execute(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error {
 	_ = ctx
-	if err := provider.ValidateQueryCapabilities(p.Capabilities(), q); err != nil {
+	if _, err := provider.ValidateQueryCapabilities(meta, p.Capabilities(), q); err != nil {
 		return err
 	}
 
@@ -324,7 +324,7 @@ func (t *memTx) Find(ctx context.Context, meta *model.EntityMeta, pkValue any, d
 
 func (t *memTx) Execute(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error {
 	_ = ctx
-	if err := provider.ValidateQueryCapabilities(memdocCapabilities, q); err != nil {
+	if _, err := provider.ValidateQueryCapabilities(meta, memdocCapabilities, q); err != nil {
 		return err
 	}
 	coll := txCollection(t.data, meta.Name)

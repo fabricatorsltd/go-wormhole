@@ -55,7 +55,7 @@ func (c *Compiler) Select(meta *model.EntityMeta, q query.Query) Compiled {
 			if !first {
 				b.WriteString(", ")
 			}
-			b.WriteString(c.compileAggregate(agg))
+			b.WriteString(c.compileAggregate(meta, agg))
 			first = false
 		}
 	} else {
@@ -280,7 +280,7 @@ type JoinSpec struct {
 // --- internal ---
 
 // compileAggregate renders a single aggregate expression, e.g. COUNT(*) AS "total".
-func (c *Compiler) compileAggregate(agg query.Aggregate) string {
+func (c *Compiler) compileAggregate(meta *model.EntityMeta, agg query.Aggregate) string {
 	var fn string
 	switch agg.Func {
 	case query.AggSum:
@@ -299,7 +299,7 @@ func (c *Compiler) compileAggregate(agg query.Aggregate) string {
 	if field == "" || field == "*" {
 		field = "*"
 	} else {
-		field = c.quote(field)
+		field = c.quote(fieldColumn(meta, field))
 	}
 
 	result := fmt.Sprintf("%s(%s)", fn, field)
@@ -412,6 +412,9 @@ func quoteIdent(s string) string {
 
 func fieldColumn(meta *model.EntityMeta, fieldName string) string {
 	if f := meta.Field(fieldName); f != nil {
+		return f.Column
+	}
+	if f := meta.FieldByColumn(fieldName); f != nil {
 		return f.Column
 	}
 	return fieldName

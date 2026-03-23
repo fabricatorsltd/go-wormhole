@@ -2,6 +2,7 @@ package sql_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/fabricatorsltd/go-wormhole/pkg/query"
@@ -196,5 +197,96 @@ func TestE2E_SumAndMaxAggregates(t *testing.T) {
 	}
 	if results[0].MaxAge != 30 {
 		t.Fatalf("expected max_age=30, got %d", results[0].MaxAge)
+	}
+}
+
+func TestE2E_CountGroupByUsingGoFieldNames(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	p := wsql.New(db)
+	ctx := context.Background()
+	userMeta := schema.Parse(&User{})
+
+	p.Insert(ctx, userMeta, &User{Name: "Alice", Age: 20})
+	p.Insert(ctx, userMeta, &User{Name: "Bob", Age: 20})
+	p.Insert(ctx, userMeta, &User{Name: "Charlie", Age: 25})
+
+	q := query.From("user").
+		GroupBy("Age").
+		Aggregate(query.AggCount, "*", "count").
+		OrderBy("Age", query.Asc).
+		Build()
+
+	resultMeta := schema.Parse(&AgeCount{})
+	var results []AgeCount
+	if err := p.Execute(ctx, resultMeta, q, &results); err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 age groups, got %d", len(results))
+	}
+}
+
+func TestE2E_AggregateValidationErrors(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	p := wsql.New(db)
+	ctx := context.Background()
+	userMeta := schema.Parse(&User{})
+	resultMeta := schema.Parse(&AgeCount{})
+
+	p.Insert(ctx, userMeta, &User{Name: "Alice", Age: 20})
+
+	tests := []struct {
+		name string
+		q    query.Query
+		want string
+	}{
+		{
+			name: "group by missing field",
+			q: query.From("user").
+				GroupBy("missing").
+				Aggregate(query.AggCount, "*", "count").
+				Build(),
+			want: `GROUP BY field "missing"`,
+		},
+		{
+			name: "aggregate missing field",
+			q: query.From("user").
+				Aggregate(query.AggSum, "missing", "sum_age").
+				Build(),
+			want: `aggregate field "missing"`,
+		},
+		{
+			name: "having missing alias",
+			q: query.From("user").
+				GroupBy("age").
+				Aggregate(query.AggCount, "*", "count").
+				Having(query.Predicate{Field: "missing_alias", Op: query.OpGt, Value: 1}).
+				Build(),
+			want: `HAVING field "missing_alias"`,
+		},
+		{
+			name: "group by without aggregate",
+			q: query.From("user").
+				GroupBy("age").
+				Build(),
+			want: "GROUP BY requires at least one aggregate",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var results []AgeCount
+			err := p.Execute(ctx, resultMeta, tt.q, &results)
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %q, want substring %q", err.Error(), tt.want)
+			}
+		})
 	}
 }
