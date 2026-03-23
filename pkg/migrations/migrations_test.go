@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	_ "github.com/glebarez/sqlite"
 
@@ -196,6 +197,46 @@ func TestDifferDropTable(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected DropTableOp for 'obsolete'")
+	}
+}
+
+func TestDifferPreservesExistingSQLTypeWhenModelHasNoExplicitType(t *testing.T) {
+	current := migrations.DatabaseSchema{
+		Tables: map[string]*migrations.TableSchema{
+			"users": {
+				Name: "users",
+				Columns: map[string]*migrations.ColumnDef{
+					"created_at": {Name: "created_at", SQLType: "TIMESTAMPTZ"},
+				},
+			},
+		},
+	}
+
+	meta := &model.EntityMeta{
+		Name: "users",
+		Fields: []model.FieldMeta{
+			{
+				FieldName: "CreatedAt",
+				Column:    "created_at",
+				GoType:    reflect.TypeOf(time.Time{}),
+			},
+		},
+	}
+
+	ops := migrations.ComputeDiff([]*model.EntityMeta{meta}, current)
+
+	var alterOp *migrations.AlterColumnOp
+	for _, op := range ops {
+		if alter, ok := op.(migrations.AlterColumnOp); ok {
+			alterOp = &alter
+			break
+		}
+	}
+	if alterOp == nil {
+		t.Fatal("expected AlterColumnOp")
+	}
+	if alterOp.Column.SQLType != "TIMESTAMPTZ" {
+		t.Fatalf("alter column SQLType = %q, want TIMESTAMPTZ", alterOp.Column.SQLType)
 	}
 }
 
