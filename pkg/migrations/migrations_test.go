@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	_ "github.com/glebarez/sqlite"
 
@@ -196,6 +197,81 @@ func TestDifferDropTable(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected DropTableOp for 'obsolete'")
+	}
+}
+
+func TestDifferPreservesExistingSQLTypeWhenModelHasNoExplicitType(t *testing.T) {
+	current := migrations.DatabaseSchema{
+		Tables: map[string]*migrations.TableSchema{
+			"users": {
+				Name: "users",
+				Columns: map[string]*migrations.ColumnDef{
+					"created_at": {Name: "created_at", SQLType: "TIMESTAMPTZ"},
+				},
+			},
+		},
+	}
+
+	meta := &model.EntityMeta{
+		Name: "users",
+		Fields: []model.FieldMeta{
+			{
+				FieldName: "CreatedAt",
+				Column:    "created_at",
+				GoType:    reflect.TypeOf(time.Time{}),
+			},
+		},
+	}
+
+	ops := migrations.ComputeDiff([]*model.EntityMeta{meta}, current)
+
+	for _, op := range ops {
+		if _, ok := op.(migrations.AlterColumnOp); ok {
+			t.Fatalf("did not expect AlterColumnOp when preserving existing SQL type, got %#v", op)
+		}
+	}
+}
+
+func TestDifferDetectsExplicitTypeChanges(t *testing.T) {
+	current := migrations.DatabaseSchema{
+		Tables: map[string]*migrations.TableSchema{
+			"users": {
+				Name: "users",
+				Columns: map[string]*migrations.ColumnDef{
+					"created_at": {Name: "created_at", SQLType: "TIMESTAMPTZ"},
+				},
+			},
+		},
+	}
+
+	meta := &model.EntityMeta{
+		Name: "users",
+		Fields: []model.FieldMeta{
+			{
+				FieldName: "CreatedAt",
+				Column:    "created_at",
+				GoType:    reflect.TypeOf(time.Time{}),
+				Tags: map[string]string{
+					"type": "TIMESTAMP",
+				},
+			},
+		},
+	}
+
+	ops := migrations.ComputeDiff([]*model.EntityMeta{meta}, current)
+
+	var alterOp *migrations.AlterColumnOp
+	for _, op := range ops {
+		if alter, ok := op.(migrations.AlterColumnOp); ok {
+			alterOp = &alter
+			break
+		}
+	}
+	if alterOp == nil {
+		t.Fatal("expected AlterColumnOp for explicit type change")
+	}
+	if alterOp.Column.SQLType != "TIMESTAMP" {
+		t.Fatalf("alter column SQLType = %q, want TIMESTAMP", alterOp.Column.SQLType)
 	}
 }
 
@@ -433,6 +509,8 @@ func TestGoTypeToSQL(t *testing.T) {
 		{reflect.TypeOf(float64(0)), "DOUBLE PRECISION"},
 		{reflect.TypeOf(true), "BOOLEAN"},
 		{reflect.TypeOf(""), "TEXT"},
+		{reflect.TypeOf(time.Time{}), "TIMESTAMP"},
+		{reflect.TypeOf(&time.Time{}), "TIMESTAMP"},
 		{nil, "TEXT"},
 	}
 
