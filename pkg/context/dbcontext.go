@@ -62,6 +62,8 @@ func WithContext(ctx stdctx.Context) Option {
 }
 
 // New creates a DbContext bound to the given Provider.
+// When built with -tags wormhole_cli, execution is intercepted here and the
+// wormhole CLI runs against the current project before this function returns.
 func New(p provider.Provider, opts ...Option) *DbContext {
 	c := &DbContext{
 		provider: p,
@@ -71,6 +73,7 @@ func New(p provider.Provider, opts ...Option) *DbContext {
 	for _, o := range opts {
 		o(c)
 	}
+	c.runCLIIfEnabled()
 	return c
 }
 
