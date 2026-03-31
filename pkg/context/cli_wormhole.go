@@ -188,42 +188,56 @@ func cliMigrationsAdd(name string) {
 }
 
 func cliMigrationsList() {
-	driver := os.Getenv("WORMHOLE_DRIVER")
-	if driver == "" {
-		driver = "sqlite"
-	}
+	dir := cliDir()
 
-	dsn := os.Getenv("WORMHOLE_DSN")
-	if dsn == "" {
-		fmt.Fprintln(os.Stderr, "Error: WORMHOLE_DSN is required")
-		os.Exit(1)
-	}
-
-	db, err := sql.Open(driver, dsn)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
-		os.Exit(1)
-	}
-	defer db.Close()
-
-	ctx := stdctx.Background()
-	d := cliResolveDialect(driver)
-	runner := migrations.NewRunner(db, d)
-
-	pending, err := runner.Pending(ctx)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error listing migrations: %v\n", err)
+		if os.IsNotExist(err) {
+			fmt.Println("No migrations directory found.")
+			return
+		}
+		fmt.Fprintf(os.Stderr, "Error reading migrations directory: %v\n", err)
 		os.Exit(1)
 	}
 
-	if len(pending) == 0 {
-		fmt.Println("No pending migrations.")
+	var files []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+			files = append(files, e.Name())
+		}
+	}
+
+	if len(files) == 0 {
+		fmt.Println("No migrations found.")
 		return
 	}
 
-	fmt.Printf("%d pending migration(s):\n", len(pending))
-	for _, id := range pending {
-		fmt.Printf("  [pending] %s\n", id)
+	// If DSN is set, enrich with applied/pending status.
+	var applied map[string]bool
+	if dsn := os.Getenv("WORMHOLE_DSN"); dsn != "" {
+		driver := os.Getenv("WORMHOLE_DRIVER")
+		if driver == "" {
+			driver = "sqlite"
+		}
+		if db, err := sql.Open(driver, dsn); err == nil {
+			defer db.Close()
+			ctx := stdctx.Background()
+			_ = migrations.EnsureHistoryTable(ctx, db)
+			applied, _ = migrations.AppliedMigrations(ctx, db)
+		}
+	}
+
+	for _, f := range files {
+		id := strings.TrimSuffix(f, ".sql")
+		if applied != nil {
+			status := "pending"
+			if applied[id] {
+				status = "applied"
+			}
+			fmt.Printf("  [%s] %s\n", status, id)
+		} else {
+			fmt.Printf("  %s\n", id)
+		}
 	}
 }
 
@@ -267,6 +281,8 @@ func cliDatabaseUpdate() {
 		os.Exit(1)
 	}
 
+	dir := cliDir()
+
 	db, err := sql.Open(driver, dsn)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
@@ -276,14 +292,94 @@ func cliDatabaseUpdate() {
 
 	ctx := stdctx.Background()
 	d := cliResolveDialect(driver)
-	runner := migrations.NewRunner(db, d)
 
-	if err := runner.Up(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "Error applying migrations: %v\n", err)
+	if err := migrations.EnsureHistoryTable(ctx, db); err != nil {
+		fmt.Fprintf(os.Stderr, "Error ensuring history table: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Println("Database updated successfully.")
+	applied, err := migrations.AppliedMigrations(ctx, db)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading migration history: %v\n", err)
+		os.Exit(1)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Println("No migrations directory found.")
+			return
+		}
+		fmt.Fprintf(os.Stderr, "Error reading migrations directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	var pending []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+			id := strings.TrimSuffix(e.Name(), ".sql")
+			if !applied[id] {
+				pending = append(pending, e.Name())
+			}
+		}
+	}
+
+	if len(pending) == 0 {
+		fmt.Println("Database is up to date.")
+		return
+	}
+
+	for _, file := range pending {
+		id := strings.TrimSuffix(file, ".sql")
+
+		content, err := os.ReadFile(filepath.Join(dir, file))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading %s: %v\n", file, err)
+			os.Exit(1)
+		}
+
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error starting transaction: %v\n", err)
+			os.Exit(1)
+		}
+
+		for _, stmt := range strings.Split(string(content), ";") {
+			stmt = strings.TrimSpace(stmt)
+			// skip comment-only or empty blocks
+			var nonComment []string
+			for _, line := range strings.Split(stmt, "\n") {
+				trimmed := strings.TrimSpace(line)
+				if trimmed != "" && !strings.HasPrefix(trimmed, "--") {
+					nonComment = append(nonComment, line)
+				}
+			}
+			stmt = strings.TrimSpace(strings.Join(nonComment, "\n"))
+			if stmt == "" {
+				continue
+			}
+			if _, err := tx.ExecContext(ctx, stmt); err != nil {
+				_ = tx.Rollback()
+				fmt.Fprintf(os.Stderr, "Error executing migration %s: %v\n", id, err)
+				os.Exit(1)
+			}
+		}
+
+		if err := migrations.RecordMigration(ctx, tx, id, d); err != nil {
+			_ = tx.Rollback()
+			fmt.Fprintf(os.Stderr, "Error recording migration %s: %v\n", id, err)
+			os.Exit(1)
+		}
+
+		if err := tx.Commit(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error committing migration %s: %v\n", id, err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("  Applied: %s\n", id)
+	}
+
+	fmt.Printf("Database updated (%d migration(s) applied).\n", len(pending))
 }
 
 func cliNoSQLMigrationsAdd(name string) {
