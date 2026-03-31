@@ -16,7 +16,7 @@ ctx.Save() // → UPDATE "users" SET "age" = ? WHERE "id" = ?
 
 ## Features
 
-- **Global CLI Tool** — Entity Framework-like CLI with `wormhole init`, uses your project's database drivers
+- **Global CLI Tool** - Entity Framework-like CLI, runs via build flag or standalone binary
 - **Auto-Discovery** — Automatically finds models with `db` tags in your project
 - **Pointer-tracking DSL** — compile-time type-safe queries, no code generation
 - **Change Tracker** — Unit of Work with partial UPDATE (only changed columns)
@@ -30,35 +30,7 @@ ctx.Save() // → UPDATE "users" SET "age" = ? WHERE "id" = ?
 
 ## Quick Start
 
-### 1. Install the CLI tool globally
-```bash
-go install github.com/fabricatorsltd/go-wormhole/cmd/wormhole@latest
-```
-
-### 2. Initialize in your project
-```bash
-cd your-project
-wormhole init
-```
-
-### 3. Import your database drivers
-Edit `wormhole_migrations_gen.go` and uncomment the driver you need:
-```go
-// Import your database drivers here
-// Examples:
-// _ "github.com/lib/pq"                    // PostgreSQL
-// _ "github.com/go-sql-driver/mysql"       // MySQL  
-// _ "github.com/denisenkom/go-mssqldb"     // SQL Server
-_ "github.com/glebarez/sqlite"           // SQLite (pure Go) - RECOMMENDED
-```
-
-### 4. Set up your database connection
-```bash
-export WORMHOLE_DSN="./myapp.db"        # SQLite
-export WORMHOLE_DRIVER="sqlite"          # or postgres, mysql, sqlserver
-```
-
-### 5. Define your models
+### 1. Define your models
 ```go
 type User struct {
     ID   int    `db:"primary_key;auto_increment"`
@@ -67,8 +39,27 @@ type User struct {
 }
 ```
 
-### 6. Generate and apply migrations
+### 2. Set up your database connection
 ```bash
+export WORMHOLE_DSN="./myapp.db"
+export WORMHOLE_DRIVER="sqlite"   # or postgres, mysql, sqlserver
+```
+
+### 3. Run migrations
+
+If your project imports go-wormhole as a library, use the `-tags wormhole_cli` build flag
+to run wormhole commands directly from your project, no extra setup needed:
+
+```bash
+go run -tags wormhole_cli . migrations add CreateUser
+go run -tags wormhole_cli . database update
+go run -tags wormhole_cli . migrations list
+```
+
+Or install the standalone CLI:
+
+```bash
+go install github.com/fabricatorsltd/go-wormhole/cmd/wormhole@latest
 wormhole migrations add CreateUser
 wormhole database update
 ```
@@ -119,14 +110,10 @@ export WORMHOLE_DSN=./myapp.db
 
 ## How It Works
 
-The CLI uses build tags to compile your project with **your** database drivers:
-
-1. `wormhole init` creates `wormhole_migrations_gen.go` in your project
-2. You import whatever database drivers you want in that file  
-3. `wormhole migrations add` runs `go build -tags wormhole_gen_migrations` using YOUR drivers
-4. No CLI dependencies needed - uses whatever you've already imported
-
-This is the same pattern as Entity Framework: **uses your project's providers**.
+Building with `-tags wormhole_cli` activates the CLI inside `DbContext.New()` via a
+build-tag-gated method. Execution is intercepted and the wormhole CLI runs before your
+`main()` logic continues. No files are generated in your project and no code changes
+are needed.
 
 ## License
 
