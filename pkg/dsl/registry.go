@@ -19,9 +19,16 @@ type fieldInfo struct {
 }
 
 // typeMap holds all field offsets for a registered struct type.
+//
+// table is the storage table name derived from the struct type name (snake_case)
+// so that predicates produced by the pointer-tracking DSL can be qualified
+// with their source table for join-aware queries. The compiler emits the
+// qualifier only when the query has joins; single-table SELECTs are
+// unaffected.
 type typeMap struct {
 	fields []fieldInfo
 	byOff  map[uintptr]*fieldInfo
+	table  string
 }
 
 var (
@@ -58,7 +65,10 @@ func Register(v any) {
 		return // already registered
 	}
 
-	tm := &typeMap{byOff: make(map[uintptr]*fieldInfo)}
+	tm := &typeMap{
+		byOff: make(map[uintptr]*fieldInfo),
+		table: util.ToSnake(t.Name()),
+	}
 
 	for i := 0; i < t.NumField(); i++ {
 		sf := t.Field(i)

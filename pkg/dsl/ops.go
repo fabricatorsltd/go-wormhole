@@ -81,11 +81,16 @@ func IsNotNil[B any, F any](base *B, fieldPtr *F) Condition {
 // --- internal: zero-allocation hot path via unsafe ---
 
 func cond[B any, F any](base *B, fieldPtr *F, op query.Op, val F) Condition {
-	fi := resolve(base, fieldPtr)
-	return Condition{Field: fi.Column, Op: op, Value: val}
+	fi, tm := resolveWithTypeMap(base, fieldPtr)
+	return Condition{Field: fi.Column, Op: op, Value: val, Table: tm.table}
 }
 
 func resolve[B any, F any](base *B, fieldPtr *F) *fieldInfo {
+	fi, _ := resolveWithTypeMap(base, fieldPtr)
+	return fi
+}
+
+func resolveWithTypeMap[B any, F any](base *B, fieldPtr *F) (*fieldInfo, *typeMap) {
 	baseAddr := uintptr(unsafe.Pointer(base))
 	fieldAddr := uintptr(unsafe.Pointer(fieldPtr))
 	offset := fieldAddr - baseAddr
@@ -98,5 +103,5 @@ func resolve[B any, F any](base *B, fieldPtr *F) *fieldInfo {
 	if !ok {
 		panic("dsl: invalid field pointer")
 	}
-	return fi
+	return fi, tm
 }

@@ -23,6 +23,7 @@ type EntitySet struct {
 	groupBy     []string
 	havingPreds []query.Predicate
 	aggregates  []query.Aggregate
+	joins       []query.JoinSpec
 }
 
 // Set creates an EntitySet bound to the given destination.
@@ -108,6 +109,24 @@ func (s *EntitySet) Having(preds ...query.Predicate) *EntitySet {
 // to the SELECT clause. field may be "*" or empty for COUNT(*).
 func (s *EntitySet) Aggregate(fn query.AggFunc, field, alias string) *EntitySet {
 	s.aggregates = append(s.aggregates, query.Aggregate{Func: fn, Field: field, Alias: alias})
+	return s
+}
+
+// Join attaches an INNER JOIN to the underlying query. The on predicate is
+// typically produced by dsl.JoinEq for type-safe joins, but any Predicate
+// or Composite is accepted.
+//
+// Result rows are still scanned into the primary entity (s.dest) — joined
+// tables are visible only in WHERE/ORDER BY at this point. DTO-typed result
+// scanning is planned as a follow-up.
+func (s *EntitySet) Join(entity string, on query.Node) *EntitySet {
+	s.joins = append(s.joins, query.JoinSpec{Type: query.JoinInner, Entity: entity, On: on})
+	return s
+}
+
+// LeftJoin attaches a LEFT JOIN to the underlying query.
+func (s *EntitySet) LeftJoin(entity string, on query.Node) *EntitySet {
+	s.joins = append(s.joins, query.JoinSpec{Type: query.JoinLeft, Entity: entity, On: on})
 	return s
 }
 
@@ -199,6 +218,14 @@ func (s *EntitySet) buildQuery() query.Query {
 	}
 	for _, agg := range s.aggregates {
 		b.Aggregate(agg.Func, agg.Field, agg.Alias)
+	}
+	for _, j := range s.joins {
+		switch j.Type {
+		case query.JoinLeft:
+			b.LeftJoin(j.Entity, j.On)
+		default:
+			b.Join(j.Entity, j.On)
+		}
 	}
 	return b.Build()
 }

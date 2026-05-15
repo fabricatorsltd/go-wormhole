@@ -57,6 +57,20 @@ func (b *Builder) OrderByCase(c CaseExpr, dir SortDir) *Builder {
 	return b
 }
 
+// Join attaches an INNER JOIN <entity> ON <on> clause to the query.
+// The on predicate is typically produced by dsl.JoinEq for type-safety, but
+// any Predicate or Composite is accepted.
+func (b *Builder) Join(entity string, on Node) *Builder {
+	b.q.Joins = append(b.q.Joins, JoinSpec{Type: JoinInner, Entity: entity, On: on})
+	return b
+}
+
+// LeftJoin attaches a LEFT JOIN <entity> ON <on> clause to the query.
+func (b *Builder) LeftJoin(entity string, on Node) *Builder {
+	b.q.Joins = append(b.q.Joins, JoinSpec{Type: JoinLeft, Entity: entity, On: on})
+	return b
+}
+
 // Limit sets the maximum number of results.
 func (b *Builder) Limit(n int) *Builder {
 	b.q.Limit = n

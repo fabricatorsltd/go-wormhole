@@ -76,6 +76,16 @@ func (c *Compiler) Select(meta *model.EntityMeta, q query.Query) Compiled {
 	}
 	b.WriteString(c.quote(entityName))
 
+	// JOINs (INNER / LEFT / RIGHT / FULL)
+	for _, j := range q.Joins {
+		b.WriteString(" ")
+		b.WriteString(j.Type.Keyword())
+		b.WriteString(" ")
+		b.WriteString(c.quote(j.Entity))
+		b.WriteString(" ON ")
+		c.compileNode(&b, &params, j.On)
+	}
+
 	// WHERE
 	if q.Where != nil {
 		b.WriteString(" WHERE ")
@@ -353,6 +363,20 @@ func (c *Compiler) compileCaseExpr(b *strings.Builder, params *[]any, meta *mode
 	b.WriteString(" END")
 }
 
+// writeColumnRef emits a single column reference, qualifying it with the
+// table name when present. Single-table queries built via direct AST
+// (Predicate.Table == "") render unqualified for back-compat; queries
+// built via the pointer-tracking DSL always carry the source table and
+// therefore render qualified — which is correct in joined queries and
+// harmlessly verbose in single-table ones.
+func (c *Compiler) writeColumnRef(b *strings.Builder, table, field string) {
+	if table != "" {
+		b.WriteString(c.quote(table))
+		b.WriteString(".")
+	}
+	b.WriteString(c.quote(field))
+}
+
 func (c *Compiler) compileNode(b *strings.Builder, params *[]any, node query.Node) {
 	switch n := node.(type) {
 	case query.Predicate:
@@ -363,8 +387,30 @@ func (c *Compiler) compileNode(b *strings.Builder, params *[]any, node query.Nod
 }
 
 func (c *Compiler) compilePredicate(b *strings.Builder, params *[]any, p query.Predicate) {
-	col := p.Field
-	b.WriteString(c.quote(col))
+	c.writeColumnRef(b, p.Table, p.Field)
+
+	// If the right-hand side is itself a column reference (typical for JOIN ON
+	// clauses), render "tableA"."colA" OP "tableB"."colB" with no placeholder.
+	if cr, ok := p.Value.(query.ColumnRef); ok {
+		switch p.Op {
+		case query.OpEq:
+			b.WriteString(" = ")
+		case query.OpNeq:
+			b.WriteString(" != ")
+		case query.OpGt:
+			b.WriteString(" > ")
+		case query.OpGte:
+			b.WriteString(" >= ")
+		case query.OpLt:
+			b.WriteString(" < ")
+		case query.OpLte:
+			b.WriteString(" <= ")
+		default:
+			b.WriteString(" = ")
+		}
+		c.writeColumnRef(b, cr.Table, cr.Field)
+		return
+	}
 
 	switch p.Op {
 	case query.OpEq:

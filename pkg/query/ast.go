@@ -8,10 +8,14 @@ type Node interface {
 }
 
 // Predicate is a leaf comparison node (e.g. Age > 18).
+//
+// Table is an optional table qualifier used when the query has joins so the
+// compiler can emit "table"."column". Non-SQL backends ignore it.
 type Predicate struct {
 	Field string
 	Op    Op
 	Value any
+	Table string // optional: table qualifier for joined queries
 }
 
 func (Predicate) nodeTag() {}
@@ -67,4 +71,5 @@ type Query struct {
 	GroupBy    []string   // GROUP BY field names
 	Having     Node       // HAVING condition tree
 	Aggregates []Aggregate // aggregate expressions (COUNT, SUM, …)
+	Joins      []JoinSpec  // additional tables joined via JOIN clauses
 }
