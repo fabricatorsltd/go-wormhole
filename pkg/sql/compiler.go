@@ -59,9 +59,21 @@ func (c *Compiler) Select(meta *model.EntityMeta, q query.Query) Compiled {
 			first = false
 		}
 	} else {
+		// Qualify SELECT-list columns with the source table when the query
+		// has joins, so unqualified column references don't become ambiguous.
+		// Single-table queries stay unqualified for readability + back-compat.
+		fromTable := q.EntityName
+		if fromTable == "" {
+			fromTable = meta.Name
+		}
+		qualifySelect := len(q.Joins) > 0
 		for i, f := range meta.Fields {
 			if i > 0 {
 				b.WriteString(", ")
+			}
+			if qualifySelect {
+				b.WriteString(c.quote(fromTable))
+				b.WriteString(".")
 			}
 			b.WriteString(c.quote(f.Column))
 		}

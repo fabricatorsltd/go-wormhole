@@ -13,17 +13,18 @@ import (
 // EntitySet provides a fluent API for querying and managing entities
 // of a single type through the DbContext.
 type EntitySet struct {
-	ctx         *DbContext
-	dest        any
-	meta        *model.EntityMeta
-	preds       []query.Node
-	sorts       []query.Sort
-	lim         int
-	off         int
-	groupBy     []string
-	havingPreds []query.Node
-	aggregates  []query.Aggregate
-	joins       []query.JoinSpec
+	ctx           *DbContext
+	dest          any
+	meta          *model.EntityMeta
+	tableOverride string
+	preds         []query.Node
+	sorts         []query.Sort
+	lim           int
+	off           int
+	groupBy       []string
+	havingPreds   []query.Node
+	aggregates    []query.Aggregate
+	joins         []query.JoinSpec
 }
 
 // Set creates an EntitySet bound to the given destination.
@@ -59,6 +60,29 @@ func (s *EntitySet) Find(pk any) error {
 	}
 	s.ctx.tracker.Attach(s.dest)
 	return nil
+}
+
+// From overrides the table name used for the FROM clause.
+//
+// This is useful when the destination is a custom DTO struct (e.g. an
+// aggregate result holder) whose Go type name doesn't match the source
+// table. Without an override, the FROM clause derives from the dest meta
+// (snake_case of the struct name) which is wrong for cross-table queries.
+//
+//	type CountRow struct {
+//	    PostID int64 `db:"post_id"`
+//	    Count  int   `db:"count"`
+//	}
+//	var rows []CountRow
+//	db.Set(&rows).
+//	    From("social_post").                            // ← required
+//	    Where(...).
+//	    GroupBy("post_id").
+//	    Aggregate(query.AggCount, "*", "count").
+//	    All()
+func (s *EntitySet) From(table string) *EntitySet {
+	s.tableOverride = table
+	return s
 }
 
 // Where appends filter predicates (top-level AND logic).
@@ -196,7 +220,11 @@ func (s *EntitySet) ToSQL() (string, []any, error) {
 }
 
 func (s *EntitySet) buildQuery() query.Query {
-	b := query.From(s.meta.Name)
+	tableName := s.meta.Name
+	if s.tableOverride != "" {
+		tableName = s.tableOverride
+	}
+	b := query.From(tableName)
 	if len(s.preds) > 0 {
 		b.Filter(s.preds...)
 	}
