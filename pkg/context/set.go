@@ -72,6 +72,14 @@ func (s *EntitySet) OrderBy(field string, dir query.SortDir) *EntitySet {
 	return s
 }
 
+// OrderByCase appends a sort clause that uses a CASE WHEN expression
+// instead of a column reference, enabling sort-priority patterns such as
+// "pinned items first, then everything else."
+func (s *EntitySet) OrderByCase(c query.CaseExpr, dir query.SortDir) *EntitySet {
+	s.sorts = append(s.sorts, query.Sort{Case: &c, Dir: dir})
+	return s
+}
+
 // Limit sets the maximum number of results.
 func (s *EntitySet) Limit(n int) *EntitySet {
 	s.lim = n
@@ -171,7 +179,11 @@ func (s *EntitySet) buildQuery() query.Query {
 		b.Filter(s.preds...)
 	}
 	for _, sort := range s.sorts {
-		b.OrderBy(sort.Field, sort.Dir)
+		if sort.Case != nil {
+			b.OrderByCase(*sort.Case, sort.Dir)
+		} else {
+			b.OrderBy(sort.Field, sort.Dir)
+		}
 	}
 	if s.lim > 0 {
 		b.Limit(s.lim)

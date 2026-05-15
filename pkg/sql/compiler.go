@@ -106,8 +106,12 @@ func (c *Compiler) Select(meta *model.EntityMeta, q query.Query) Compiled {
 		} else {
 			b.WriteString(", ")
 		}
-		col := fieldColumn(meta, s.Field)
-		b.WriteString(c.quote(col))
+		if s.Case != nil {
+			c.compileCaseExpr(&b, &params, meta, *s.Case)
+		} else {
+			col := fieldColumn(meta, s.Field)
+			b.WriteString(c.quote(col))
+		}
 		if s.Dir == query.Desc {
 			b.WriteString(" DESC")
 		} else {
@@ -326,6 +330,27 @@ func (c *Compiler) compileAggregate(meta *model.EntityMeta, agg query.Aggregate)
 		result += " AS " + c.quote(agg.Alias)
 	}
 	return result
+}
+
+// compileCaseExpr renders CASE WHEN … THEN … [WHEN … THEN …] ELSE … END.
+// Predicates inside WHEN reuse compileNode so all predicate ops are supported.
+// Then/Else values are emitted as parameter placeholders so types preserve
+// across drivers.
+func (c *Compiler) compileCaseExpr(b *strings.Builder, params *[]any, meta *model.EntityMeta, ce query.CaseExpr) {
+	b.WriteString("CASE")
+	for _, branch := range ce.Branches {
+		b.WriteString(" WHEN ")
+		c.compileNode(b, params, branch.When)
+		b.WriteString(" THEN ")
+		b.WriteString(c.ph(len(*params) + 1))
+		*params = append(*params, branch.Then)
+	}
+	if ce.Else != nil {
+		b.WriteString(" ELSE ")
+		b.WriteString(c.ph(len(*params) + 1))
+		*params = append(*params, ce.Else)
+	}
+	b.WriteString(" END")
 }
 
 func (c *Compiler) compileNode(b *strings.Builder, params *[]any, node query.Node) {

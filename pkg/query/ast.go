@@ -25,9 +25,14 @@ type Composite struct {
 func (Composite) nodeTag() {}
 
 // Sort represents a single ORDER BY clause.
+//
+// When Case is non-nil it takes precedence: the compiler emits the CASE
+// expression in place of a column reference. Field is otherwise the column
+// to sort on.
 type Sort struct {
 	Field string
 	Dir   SortDir
+	Case  *CaseExpr // optional CASE WHEN … THEN … expression
 }
 
 // AggFunc is the type of an aggregate function.

@@ -49,6 +49,14 @@ func (b *Builder) OrderBy(field string, dir SortDir) *Builder {
 	return b
 }
 
+// OrderByCase appends a sort clause that uses a CASE WHEN expression
+// instead of a column reference. Useful for sort-priority patterns where
+// some rows should come first (e.g. "currently-pinned items at the top").
+func (b *Builder) OrderByCase(c CaseExpr, dir SortDir) *Builder {
+	b.q.OrderBy = append(b.q.OrderBy, Sort{Case: &c, Dir: dir})
+	return b
+}
+
 // Limit sets the maximum number of results.
 func (b *Builder) Limit(n int) *Builder {
 	b.q.Limit = n
