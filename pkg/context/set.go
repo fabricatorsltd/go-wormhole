@@ -16,12 +16,12 @@ type EntitySet struct {
 	ctx         *DbContext
 	dest        any
 	meta        *model.EntityMeta
-	preds       []query.Predicate
+	preds       []query.Node
 	sorts       []query.Sort
 	lim         int
 	off         int
 	groupBy     []string
-	havingPreds []query.Predicate
+	havingPreds []query.Node
 	aggregates  []query.Aggregate
 	joins       []query.JoinSpec
 }
@@ -61,9 +61,11 @@ func (s *EntitySet) Find(pk any) error {
 	return nil
 }
 
-// Where appends filter predicates (AND logic). Chainable.
-func (s *EntitySet) Where(preds ...query.Predicate) *EntitySet {
-	s.preds = append(s.preds, preds...)
+// Where appends filter predicates (top-level AND logic).
+// Accepts any query.Node, so composite dsl.And / dsl.Or trees work too.
+// Chainable.
+func (s *EntitySet) Where(nodes ...query.Node) *EntitySet {
+	s.preds = append(s.preds, nodes...)
 	return s
 }
 
@@ -100,8 +102,9 @@ func (s *EntitySet) GroupBy(fields ...string) *EntitySet {
 }
 
 // Having appends predicate(s) for the HAVING clause (AND logic). Chainable.
-func (s *EntitySet) Having(preds ...query.Predicate) *EntitySet {
-	s.havingPreds = append(s.havingPreds, preds...)
+// Accepts any query.Node.
+func (s *EntitySet) Having(nodes ...query.Node) *EntitySet {
+	s.havingPreds = append(s.havingPreds, nodes...)
 	return s
 }
 

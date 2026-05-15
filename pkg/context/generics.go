@@ -48,9 +48,10 @@ func Query[T any](c *DbContext) *QueryResult[T] {
 	}
 }
 
-// Where appends predicates (AND logic).
-func (qr *QueryResult[T]) Where(preds ...query.Predicate) *QueryResult[T] {
-	qr.builder.Filter(preds...)
+// Where appends predicates (AND logic). Accepts any query.Node, so composite
+// dsl.And / dsl.Or trees can be mixed with raw Predicates.
+func (qr *QueryResult[T]) Where(nodes ...query.Node) *QueryResult[T] {
+	qr.builder.Filter(nodes...)
 	return qr
 }
 

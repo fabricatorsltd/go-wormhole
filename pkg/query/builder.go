@@ -18,12 +18,11 @@ func (b *Builder) Where(field string, op Op, value any) *Builder {
 	return b
 }
 
-// Filter adds one or more typed predicates produced by generated field
-// builders (e.g. UserFields.Age.Gt(18)).
-func (b *Builder) Filter(preds ...Predicate) *Builder {
-	for _, p := range preds {
-		b.predicates = append(b.predicates, p)
-	}
+// Filter adds one or more typed predicates produced by the dsl package.
+// Accepts any query.Node, so callers can mix raw Predicates with composite
+// dsl.And / dsl.Or trees.
+func (b *Builder) Filter(nodes ...Node) *Builder {
+	b.predicates = append(b.predicates, nodes...)
 	return b
 }
 
@@ -96,10 +95,9 @@ func (b *Builder) GroupBy(fields ...string) *Builder {
 }
 
 // Having adds one or more predicates for the HAVING clause (AND logic).
-func (b *Builder) Having(preds ...Predicate) *Builder {
-	for _, p := range preds {
-		b.havingPreds = append(b.havingPreds, p)
-	}
+// Accepts query.Node so composite dsl.And / dsl.Or trees are supported.
+func (b *Builder) Having(nodes ...Node) *Builder {
+	b.havingPreds = append(b.havingPreds, nodes...)
 	return b
 }
 
