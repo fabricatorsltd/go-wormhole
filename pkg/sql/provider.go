@@ -177,6 +177,29 @@ func (p *Provider) Delete(ctx context.Context, meta *model.EntityMeta, pkValue a
 	})
 }
 
+// DeleteWhere implements provider.BulkDeleter for the SQL provider.
+// Emits a single DELETE … WHERE … against the entity table.
+// Returns rowsAffected, or -1 if the driver cannot report it.
+func (p *Provider) DeleteWhere(ctx context.Context, meta *model.EntityMeta, q query.Query) (int64, error) {
+	c := p.compiler.DeleteWhere(meta, q)
+	p.logQuery(c)
+	var affected int64
+	err := p.retryDo(ctx, func() error {
+		res, err := p.db.ExecContext(ctx, c.SQL, c.Params...)
+		if err != nil {
+			return err
+		}
+		n, errN := res.RowsAffected()
+		if errN != nil {
+			affected = -1
+			return nil
+		}
+		affected = n
+		return nil
+	})
+	return affected, err
+}
+
 func (p *Provider) Find(ctx context.Context, meta *model.EntityMeta, pkValue any, dest any) error {
 	c := p.compiler.FindByPK(meta, pkValue)
 	p.logQuery(c)
@@ -317,6 +340,21 @@ func (t *sqlTx) Delete(ctx context.Context, meta *model.EntityMeta, pkValue any)
 	t.logQuery(c)
 	_, err := t.tx.ExecContext(ctx, c.SQL, c.Params...)
 	return err
+}
+
+// DeleteWhere mirrors Provider.DeleteWhere for in-transaction bulk deletes.
+func (t *sqlTx) DeleteWhere(ctx context.Context, meta *model.EntityMeta, q query.Query) (int64, error) {
+	c := t.compiler.DeleteWhere(meta, q)
+	t.logQuery(c)
+	res, err := t.tx.ExecContext(ctx, c.SQL, c.Params...)
+	if err != nil {
+		return 0, err
+	}
+	n, errN := res.RowsAffected()
+	if errN != nil {
+		return -1, nil
+	}
+	return n, nil
 }
 
 func (t *sqlTx) Find(ctx context.Context, meta *model.EntityMeta, pkValue any, dest any) error {

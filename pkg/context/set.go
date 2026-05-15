@@ -114,6 +114,26 @@ func (s *EntitySet) All() error {
 	})
 }
 
+// Delete performs a bulk DELETE against the underlying provider matching the
+// current Where chain. Returns the number of rows affected (-1 if the driver
+// cannot report it).
+//
+// An EntitySet with no Where predicates deletes every row in the entity table.
+// OrderBy/Limit/Offset/GroupBy/Having/Aggregate are intentionally ignored —
+// portable SQL DELETE does not support them.
+//
+// Returns an error if the provider does not implement provider.BulkDeleter.
+// Callers can fall back to loading rows + Remove + Save in that case.
+func (s *EntitySet) Delete() (int64, error) {
+	bd, ok := s.ctx.provider.(provider.BulkDeleter)
+	if !ok {
+		return 0, fmt.Errorf("provider %q does not support bulk delete (BulkDeleter)", s.ctx.provider.Name())
+	}
+	q := s.buildQuery()
+	ctx := s.ctx.opCtx()
+	return bd.DeleteWhere(ctx, s.meta, q)
+}
+
 // Add marks entities for insertion.
 func (s *EntitySet) Add(entities ...any) {
 	for _, e := range entities {

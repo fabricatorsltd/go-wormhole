@@ -214,6 +214,25 @@ func (c *Compiler) Delete(meta *model.EntityMeta, pkValue any) Compiled {
 	return Compiled{SQL: sql, Params: []any{pkValue}}
 }
 
+// DeleteWhere compiles a bulk DELETE … WHERE … from a query AST.
+// The AST's OrderBy/Limit/Offset/Aggregates/GroupBy/Having are ignored
+// because standard SQL DELETE does not support them portably.
+// An empty Where clause emits an unconditional DELETE (full table wipe).
+func (c *Compiler) DeleteWhere(meta *model.EntityMeta, q query.Query) Compiled {
+	var b strings.Builder
+	var params []any
+
+	b.WriteString("DELETE FROM ")
+	b.WriteString(c.quote(meta.Name))
+
+	if q.Where != nil {
+		b.WriteString(" WHERE ")
+		c.compileNode(&b, &params, q.Where)
+	}
+
+	return Compiled{SQL: b.String(), Params: params}
+}
+
 // FindByPK compiles a SELECT … WHERE pk = ? for a single entity.
 func (c *Compiler) FindByPK(meta *model.EntityMeta, pkValue any) Compiled {
 	var cols []string

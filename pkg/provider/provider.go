@@ -66,6 +66,16 @@ type CompiledQuery struct {
 	Params []any
 }
 
+// BulkDeleter is an optional interface a Provider may implement to delete
+// many rows in a single statement, matching a query AST. Providers that do
+// not implement this should be paired with a fallback path that loads rows
+// and removes them individually.
+//
+// Returns the number of rows affected (-1 if the backend cannot report it).
+type BulkDeleter interface {
+	DeleteWhere(ctx context.Context, meta *model.EntityMeta, q query.Query) (int64, error)
+}
+
 // QueryExplainer is an optional interface a Provider may implement to
 // expose compiled queries without executing them. Useful for debugging.
 type QueryExplainer interface {
