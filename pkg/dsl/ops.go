@@ -46,12 +46,22 @@ func Lte[B any, F any](base *B, fieldPtr *F, val F) Condition {
 
 // In builds an IN predicate.
 func In[B any, F any](base *B, fieldPtr *F, vals ...F) Condition {
-	fi := resolve(base, fieldPtr)
+	fi, tm := resolveWithTypeMap(base, fieldPtr)
 	items := make([]any, len(vals))
 	for i, v := range vals {
 		items[i] = v
 	}
-	return Condition{Field: fi.Column, Op: query.OpIn, Value: items}
+	return Condition{Field: fi.Column, Op: query.OpIn, Value: items, Table: tm.table}
+}
+
+// NotIn builds a NOT IN predicate. Mirrors In() with negated semantics.
+func NotIn[B any, F any](base *B, fieldPtr *F, vals ...F) Condition {
+	fi, tm := resolveWithTypeMap(base, fieldPtr)
+	items := make([]any, len(vals))
+	for i, v := range vals {
+		items[i] = v
+	}
+	return Condition{Field: fi.Column, Op: query.OpNotIn, Value: items, Table: tm.table}
 }
 
 // Like builds a LIKE predicate (raw pattern, e.g. "%alice%").

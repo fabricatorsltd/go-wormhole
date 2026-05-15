@@ -445,13 +445,23 @@ func (c *Compiler) compilePredicate(b *strings.Builder, params *[]any, p query.P
 		b.WriteString(" IS NULL")
 	case query.OpIsNotNil:
 		b.WriteString(" IS NOT NULL")
-	case query.OpIn:
+	case query.OpIn, query.OpNotIn:
+		op := " IN ("
+		if p.Op == query.OpNotIn {
+			op = " NOT IN ("
+		}
 		items, ok := p.Value.([]any)
-		if !ok {
-			b.WriteString(" IN ()")
+		if !ok || len(items) == 0 {
+			// Empty IN () is invalid SQL; emit a tautology / contradiction so
+			// the surrounding WHERE still parses cleanly.
+			if p.Op == query.OpNotIn {
+				b.WriteString(" IS NOT NULL") // NOT IN (∅) ≡ always true for non-null
+			} else {
+				b.WriteString(" = NULL")      // IN (∅) ≡ always false
+			}
 			return
 		}
-		b.WriteString(" IN (")
+		b.WriteString(op)
 		for i, item := range items {
 			if i > 0 {
 				b.WriteString(", ")

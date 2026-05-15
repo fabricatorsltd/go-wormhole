@@ -14,10 +14,11 @@ const (
 	OpLike               // LIKE / contains
 	OpIsNil              // IS NULL
 	OpIsNotNil           // IS NOT NULL
+	OpNotIn              // NOT IN
 )
 
 func (o Op) String() string {
-	names := [...]string{"=", "!=", ">", ">=", "<", "<=", "IN", "LIKE", "IS NULL", "IS NOT NULL"}
+	names := [...]string{"=", "!=", ">", ">=", "<", "<=", "IN", "LIKE", "IS NULL", "IS NOT NULL", "NOT IN"}
 	if int(o) < len(names) {
 		return names[o]
 	}
