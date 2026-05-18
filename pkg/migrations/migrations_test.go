@@ -78,6 +78,23 @@ func TestBuilderCreateIndex(t *testing.T) {
 	}
 }
 
+func TestBuilderRawSQL(t *testing.T) {
+	b := migrations.NewBuilder()
+	b.CreateIndex("idx_users_email", "users", true, "email")
+	b.Raw("INSERT INTO users (id, email) VALUES ('anon', 'anon@x.io') ON CONFLICT DO NOTHING;")
+
+	stmts := b.Statements()
+	if len(stmts) != 2 {
+		t.Fatalf("want 2 statements, got %d", len(stmts))
+	}
+	if !strings.HasPrefix(stmts[1], "INSERT INTO users") {
+		t.Errorf("raw SQL passed through unmodified expected, got: %q", stmts[1])
+	}
+	if strings.HasSuffix(stmts[1], ";") {
+		t.Errorf("trailing semicolon should be trimmed (runner re-joins), got: %q", stmts[1])
+	}
+}
+
 // --- Differ tests ---
 
 func TestDifferNewTable(t *testing.T) {

@@ -98,6 +98,17 @@ func (b *SchemaBuilder) AlterColumn(table string, col ColumnDef) {
 	b.ops = append(b.ops, AlterColumnOp{Table: table, Column: col})
 }
 
+// Raw enqueues a literal SQL statement, executed in the same
+// transaction as the surrounding DDL ops. Use when the schema-diff
+// machinery can't express what the migration needs — DML (INSERT,
+// UPDATE, DELETE), dialect-specific clauses, or one-off PL/SQL.
+//
+// Statements are passed through unmodified, so the author owns
+// dialect portability. A trailing semicolon is optional.
+func (b *SchemaBuilder) Raw(sql string) {
+	b.ops = append(b.ops, RawSQLOp{SQL: sql})
+}
+
 // Ops returns the accumulated operations.
 func (b *SchemaBuilder) Ops() []MigrationOp { return b.ops }
 
@@ -164,6 +175,10 @@ func (b *SchemaBuilder) renderOp(op MigrationOp) string {
 			u, ifne, q(o.Name), q(o.Table), strings.Join(cols, ", "))
 	case DropIndexOp:
 		return fmt.Sprintf("DROP INDEX IF EXISTS %s", q(o.Name))
+	case RawSQLOp:
+		// Pass-through: trim the trailing semicolon (the runner adds
+		// it back when joining the SQL string).
+		return strings.TrimRight(strings.TrimSpace(o.SQL), ";")
 	default:
 		return fmt.Sprintf("-- unknown op: %T", op)
 	}

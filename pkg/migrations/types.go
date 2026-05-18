@@ -27,6 +27,7 @@ const (
 	OpAlterColumn
 	OpCreateIndex
 	OpDropIndex
+	OpRawSQL
 )
 
 // MigrationOp is a single DDL operation emitted by the differ.
@@ -89,6 +90,23 @@ type DropIndexOp struct {
 }
 
 func (o DropIndexOp) Kind() OpKind { return OpDropIndex }
+
+// RawSQLOp lets a migration emit a literal SQL statement that the
+// differ-based DDL ops can't express — typically DML (seeding rows,
+// backfilling values, swapping enum strings) or dialect-specific
+// constructs like ON CONFLICT clauses, partial indexes, or stored
+// procedures.
+//
+// The renderer passes SQL through unmodified, so it's on the migration
+// author to make sure the statement is valid for every dialect they
+// target. Wrap dialect-specific syntax with a runtime check on the
+// Dialect type if a single migration has to support multiple
+// databases.
+type RawSQLOp struct {
+	SQL string
+}
+
+func (o RawSQLOp) Kind() OpKind { return OpRawSQL }
 
 // DatabaseSchema represents the current state of the database for diffing.
 type DatabaseSchema struct {
