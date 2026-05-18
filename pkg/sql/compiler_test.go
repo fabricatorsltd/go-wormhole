@@ -197,6 +197,91 @@ func TestCompileInsert(t *testing.T) {
 	}
 }
 
+// metaWithDefault builds a `posts` table whose `status` column has a
+// DB-side default. Mirrors the real-world shape that exposed the bug
+// where wormhole was writing the Go zero-value into a column the
+// caller intended to inherit from the DB default.
+func metaWithDefault() *model.EntityMeta {
+	meta := &model.EntityMeta{
+		Name: "posts",
+		Fields: []model.FieldMeta{
+			{FieldName: "ID", Column: "id", PrimaryKey: true, AutoIncr: true},
+			{FieldName: "Title", Column: "title"},
+			{
+				FieldName: "Status",
+				Column:    "status",
+				Tags:      map[string]string{"default": "active"},
+			},
+		},
+	}
+	meta.PrimaryKey = &meta.Fields[0]
+	meta.BuildIndex()
+	return meta
+}
+
+func TestCompileInsert_OmitsZeroValueWhenDefaultDeclared(t *testing.T) {
+	c := &wsql.Compiler{}
+	meta := metaWithDefault()
+
+	// Status is the zero-value (""). Because the field declares a
+	// `default:`, the column should be omitted so the DB default fires.
+	values := map[string]any{"ID": 0, "Title": "hello", "Status": ""}
+	out := c.Insert(meta, values)
+
+	if strings.Contains(out.SQL, `"status"`) {
+		t.Fatalf("zero-value status should be omitted when default declared: %s", out.SQL)
+	}
+	if !strings.Contains(out.SQL, `"title"`) {
+		t.Fatalf("title column missing: %s", out.SQL)
+	}
+	if len(out.Params) != 1 {
+		t.Fatalf("params: want 1 (title only), got %d", len(out.Params))
+	}
+}
+
+func TestCompileInsert_WritesNonZeroValueEvenWithDefault(t *testing.T) {
+	c := &wsql.Compiler{}
+	meta := metaWithDefault()
+
+	// Caller set Status="hidden". Even though `default:` is declared,
+	// the explicit non-zero value must reach the INSERT.
+	values := map[string]any{"ID": 0, "Title": "hello", "Status": "hidden"}
+	out := c.Insert(meta, values)
+
+	if !strings.Contains(out.SQL, `"status"`) {
+		t.Fatalf("explicit status value should not be omitted: %s", out.SQL)
+	}
+	if len(out.Params) != 2 {
+		t.Fatalf("params: want 2 (title + status), got %d", len(out.Params))
+	}
+	// Status comes after Title in field order, so it's the second param.
+	if out.Params[1] != "hidden" {
+		t.Fatalf("status param: want hidden, got %v", out.Params[1])
+	}
+}
+
+func TestCompileInsert_NoDefaultStillWritesZeroValue(t *testing.T) {
+	c := &wsql.Compiler{}
+	meta := testMeta()
+
+	// No `default:` on any field. Zero-value Name and Age must still be
+	// part of the INSERT — this is the pre-existing contract and a lot
+	// of callers rely on it (e.g. explicit empty strings as a sentinel
+	// in the domain).
+	values := map[string]any{"ID": 0, "Name": "", "Age": 0}
+	out := c.Insert(meta, values)
+
+	if !strings.Contains(out.SQL, `"name"`) {
+		t.Fatalf("name column missing without a default: %s", out.SQL)
+	}
+	if !strings.Contains(out.SQL, `"age"`) {
+		t.Fatalf("age column missing without a default: %s", out.SQL)
+	}
+	if len(out.Params) != 2 {
+		t.Fatalf("params: want 2 (name + age), got %d", len(out.Params))
+	}
+}
+
 func TestCompileUpdate_Partial(t *testing.T) {
 	c := &wsql.Compiler{}
 	meta := testMeta()

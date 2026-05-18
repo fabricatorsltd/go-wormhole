@@ -2,6 +2,7 @@ package sql
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
@@ -164,6 +165,18 @@ func (c *Compiler) Select(meta *model.EntityMeta, q query.Query) Compiled {
 }
 
 // Insert compiles an INSERT statement for all fields of an entity.
+//
+// Auto-increment PKs are always omitted (DB generates them). Fields
+// declared with `default:<value>` in the struct tag are also omitted
+// when their value equals the Go zero-value for the field type — the
+// caller hasn't set them, so let the column DEFAULT in the DB apply.
+// This matches EF Core's HasDefaultValue sentinel behaviour and
+// Hibernate's @DynamicInsert: when an ORM-tracked default exists,
+// "unset" means "use the DB default", not "write empty string / 0".
+//
+// Callers who explicitly want to write the zero-value (e.g. an empty
+// string is a legitimate non-default value in the domain) should not
+// declare a `default:` on that field.
 func (c *Compiler) Insert(meta *model.EntityMeta, values map[string]any) Compiled {
 	var cols, placeholders []string
 	var params []any
@@ -172,6 +185,11 @@ func (c *Compiler) Insert(meta *model.EntityMeta, values map[string]any) Compile
 	for _, f := range meta.Fields {
 		if f.AutoIncr {
 			continue
+		}
+		if _, hasDefault := f.Tags["default"]; hasDefault {
+			if isZeroValue(values[f.FieldName]) {
+				continue
+			}
 		}
 		cols = append(cols, c.quote(f.Column))
 		params = append(params, values[f.FieldName])
@@ -185,6 +203,25 @@ func (c *Compiler) Insert(meta *model.EntityMeta, values map[string]any) Compile
 		strings.Join(placeholders, ", "),
 	)
 	return Compiled{SQL: sql, Params: params}
+}
+
+// isZeroValue reports whether v is the Go zero-value for its type.
+// Used by Insert to decide whether to honour a DB column default.
+//
+// nil interface{} is zero. For everything else we reflect: nil pointer
+// is zero, IsZero() covers the rest (empty string, 0, false, zero
+// time.Time, empty slice header, etc.). Slices and maps with nil
+// underlying storage are zero; populated empty containers like `[]int{}`
+// are not — they were explicitly constructed by the caller.
+func isZeroValue(v any) bool {
+	if v == nil {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Ptr && rv.IsNil() {
+		return true
+	}
+	return rv.IsZero()
 }
 
 // Update compiles a partial UPDATE for only the specified changed fields.
