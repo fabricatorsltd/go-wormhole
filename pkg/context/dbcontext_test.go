@@ -243,6 +243,30 @@ func TestSetAddAndTrack(t *testing.T) {
 	}
 }
 
+// TestSaveAssignsAutoIncrPK guards the contract that applyEntry writes
+// the driver-returned auto-increment PK back onto the in-memory entity
+// after a successful insert. Without this, callers can't reference the
+// just-inserted row in the same request — see the dbcontext.go comment
+// on assignAutoIncrPK for the rationale.
+func TestSaveAssignsAutoIncrPK(t *testing.T) {
+	mp := &mockProvider{}
+	ctx := wctx.New(mp)
+
+	u := &TestUser{Name: "alice", Age: 30}
+	ctx.Add(u)
+
+	if u.ID != 0 {
+		t.Fatalf("precondition: expected fresh entity to have ID=0, got %d", u.ID)
+	}
+	if err := ctx.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	// mockProvider.Insert returns 1 as the generated PK.
+	if u.ID != 1 {
+		t.Fatalf("expected Save() to write PK back onto the struct (want 1), got %d", u.ID)
+	}
+}
+
 // --- PendingSQL tests ---
 
 func TestPendingSQL_Insert(t *testing.T) {

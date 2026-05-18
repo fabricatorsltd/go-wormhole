@@ -3,6 +3,7 @@ package context
 import (
 	stdctx "context"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
@@ -231,7 +232,16 @@ func (c *DbContext) flush(ctx stdctx.Context, pending []*model.Entry) error {
 func (c *DbContext) applyEntry(ctx stdctx.Context, tx provider.Tx, e *model.Entry) error {
 	switch e.State {
 	case model.Added:
-		_, err := tx.Insert(ctx, e.Meta, e.Entity)
+		id, err := tx.Insert(ctx, e.Meta, e.Entity)
+		if err == nil {
+			// Write the generated PK back onto the in-memory entity so
+			// callers can use it immediately after Save(). Without this
+			// the auto-increment value goes into the database but the
+			// caller still sees the zero value, which breaks any flow
+			// that needs to reference the just-inserted row in the same
+			// request (link tables, return-id-to-FE, cascading writes).
+			assignAutoIncrPK(e, id)
+		}
 		return err
 	case model.Modified:
 		changed := tracker.ChangedFields(e)
@@ -241,6 +251,40 @@ func (c *DbContext) applyEntry(ctx stdctx.Context, tx provider.Tx, e *model.Entr
 		return tx.Delete(ctx, e.Meta, pk)
 	default:
 		return nil
+	}
+}
+
+// assignAutoIncrPK writes `id` onto the entity's auto-increment PK
+// field, using reflection so we can adapt to whatever integer width the
+// model declared (int16 / int32 / int64 / uint*). It is a no-op when
+// the model has no auto-increment PK, when the id is nil, or when the
+// PK field is not addressable (e.g. caller passed a non-pointer).
+//
+// Driver providers return `id` as any — typically int64 for SQL drivers
+// that surface LastInsertId, or whatever scan target the RETURNING path
+// chose. We funnel everything through reflect.Value.Convert so callers
+// don't have to care.
+func assignAutoIncrPK(e *model.Entry, id any) {
+	if id == nil || e.Meta.PrimaryKey == nil || !e.Meta.PrimaryKey.AutoIncr {
+		return
+	}
+	val := reflect.ValueOf(e.Entity)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+	if !val.IsValid() || val.Kind() != reflect.Struct {
+		return
+	}
+	field := val.FieldByName(e.Meta.PrimaryKey.FieldName)
+	if !field.IsValid() || !field.CanSet() {
+		return
+	}
+	src := reflect.ValueOf(id)
+	if !src.IsValid() {
+		return
+	}
+	if src.Type().ConvertibleTo(field.Type()) {
+		field.Set(src.Convert(field.Type()))
 	}
 }
 
