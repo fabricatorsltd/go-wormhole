@@ -4,7 +4,7 @@ go 1.25.7
 
 require (
 	github.com/glebarez/sqlite v1.11.0
-	github.com/mirkobrombin/go-foundation v0.3.0
+	github.com/mirkobrombin/go-foundation v1.1.0
 	github.com/mirkobrombin/go-slipstream v1.0.1
 	go.mongodb.org/mongo-driver v1.17.9
 )

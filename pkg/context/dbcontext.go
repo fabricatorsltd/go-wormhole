@@ -11,7 +11,7 @@ import (
 	"github.com/fabricatorsltd/go-wormhole/pkg/query"
 	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
 	"github.com/fabricatorsltd/go-wormhole/pkg/tracker"
-	"github.com/mirkobrombin/go-foundation/pkg/errors"
+	"github.com/mirkobrombin/go-foundation/pkg/errutil"
 	"github.com/mirkobrombin/go-foundation/pkg/hooks"
 	"github.com/mirkobrombin/go-foundation/pkg/resiliency"
 )
@@ -203,7 +203,7 @@ func (c *DbContext) SaveChanges(ctx stdctx.Context) error {
 
 	// Run "before" lifecycle methods discovered on entities.
 	disc := hooks.NewDiscovery()
-	var me errors.MultiError
+	var me errutil.MultiError
 	for _, e := range pending {
 		for _, m := range disc.Discover(e.Entity, "Before") {
 			results, err := disc.CallWithContext(ctx, e.Entity, m.Name)
