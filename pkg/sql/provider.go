@@ -3,6 +3,7 @@ package sql
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"reflect"
 
@@ -448,9 +449,50 @@ func structToMap(meta *model.EntityMeta, entity any) map[string]any {
 	}
 	m := make(map[string]any, len(meta.Fields))
 	for _, f := range meta.Fields {
-		m[f.FieldName] = val.FieldByName(f.FieldName).Interface()
+		v := val.FieldByName(f.FieldName).Interface()
+		// `json`-tagged fields are serialized to a JSON text/blob column.
+		if _, ok := f.Tags["json"]; ok {
+			if b, err := json.Marshal(v); err == nil {
+				v = string(b)
+			}
+		}
+		m[f.FieldName] = v
 	}
 	return m
+}
+
+// jsonScanner unmarshals a JSON text/blob column into a Go field. Used for
+// `json`-tagged fields so struct/slice/map columns round-trip.
+type jsonScanner struct{ dst any }
+
+func (s jsonScanner) Scan(src any) error {
+	if src == nil {
+		return nil
+	}
+	var b []byte
+	switch v := src.(type) {
+	case []byte:
+		b = v
+	case string:
+		b = []byte(v)
+	default:
+		return fmt.Errorf("json column: cannot scan %T", src)
+	}
+	if len(b) == 0 {
+		return nil
+	}
+	return json.Unmarshal(b, s.dst)
+}
+
+// scanTarget returns the rows.Scan destination for a field: a JSON
+// unmarshaling wrapper for `json`-tagged fields, otherwise the field's
+// address.
+func scanTarget(field reflect.Value, fm *model.FieldMeta) any {
+	addr := field.Addr().Interface()
+	if _, ok := fm.Tags["json"]; ok {
+		return jsonScanner{dst: addr}
+	}
+	return addr
 }
 
 func pkFromStruct(meta *model.EntityMeta, entity any) any {
@@ -472,8 +514,9 @@ func scanRow(meta *model.EntityMeta, row *sql.Row, dest any) error {
 	val = val.Elem()
 
 	ptrs := make([]any, len(meta.Fields))
-	for i, f := range meta.Fields {
-		ptrs[i] = val.FieldByName(f.FieldName).Addr().Interface()
+	for i := range meta.Fields {
+		fm := &meta.Fields[i]
+		ptrs[i] = scanTarget(val.FieldByName(fm.FieldName), fm)
 	}
 	return row.Scan(ptrs...)
 }
@@ -514,7 +557,7 @@ func scanRows(meta *model.EntityMeta, rows *sql.Rows, dest any) error {
 		ptrs := make([]any, len(cols))
 		for i, col := range cols {
 			if fm, ok := colToField[col]; ok {
-				ptrs[i] = target.FieldByName(fm.FieldName).Addr().Interface()
+				ptrs[i] = scanTarget(target.FieldByName(fm.FieldName), fm)
 			} else {
 				// Column not mapped (e.g. from a JOIN) — discard into a throwaway
 				var discard any

@@ -71,6 +71,10 @@ func ParseType(t reflect.Type) *model.EntityMeta {
 		if v := fm.Get("default"); v != "" {
 			field.Tags["default"] = v
 		}
+		if fm.Has("json") {
+			// Field is (de)serialized to/from a JSON text/blob column.
+			field.Tags["json"] = "true"
+		}
 
 		meta.Fields = append(meta.Fields, field)
 		if field.PrimaryKey {
