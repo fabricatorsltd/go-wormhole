@@ -124,12 +124,12 @@ func createMetaFromAST(typeName string, structType *ast.StructType) *model.Entit
 			fieldNames = append(fieldNames, name.Name)
 		}
 
-		// Determine the Go type
-		goType := extractGoTypeFromAST(field.Type)
+		// Determine the Go type (and whether it is a pointer, i.e. nullable)
+		goType, isPointer := extractGoTypeFromAST(field.Type)
 
 		// Parse the db tag
 		if len(fieldNames) > 0 {
-			fieldMeta := parseFieldFromTagWithType(fieldNames[0], tag, goType)
+			fieldMeta := parseFieldFromTagWithType(fieldNames[0], tag, goType, isPointer)
 			if fieldMeta != nil {
 				meta.Fields = append(meta.Fields, *fieldMeta)
 				if fieldMeta.PrimaryKey {
@@ -146,34 +146,59 @@ func createMetaFromAST(typeName string, structType *ast.StructType) *model.Entit
 	return nil
 }
 
-// extractGoTypeFromAST attempts to determine the Go type from AST
-func extractGoTypeFromAST(expr ast.Expr) string {
+// extractGoTypeFromAST determines the underlying Go type from the AST and
+// reports whether the field is a pointer (the nullability signal). Pointers
+// are unwrapped to their element type; []byte is reported as a blob scalar and
+// other slices/maps as composite types so they no longer collapse to "string".
+func extractGoTypeFromAST(expr ast.Expr) (goType string, isPointer bool) {
 	switch t := expr.(type) {
+	case *ast.StarExpr:
+		inner, _ := extractGoTypeFromAST(t.X)
+		return inner, true
 	case *ast.Ident:
-		return t.Name
+		return t.Name, false
 	case *ast.SelectorExpr:
-		return fmt.Sprintf("%s.%s", t.X, t.Sel.Name)
+		return fmt.Sprintf("%s.%s", t.X, t.Sel.Name), false
+	case *ast.ArrayType:
+		if id, ok := t.Elt.(*ast.Ident); ok && id.Name == "byte" {
+			return "[]byte", false
+		}
+		return "slice", false
+	case *ast.MapType:
+		return "map", false
 	default:
-		return "string" // Default fallback
+		return "string", false
 	}
 }
 
-// parseFieldFromTagWithType is like parseFieldFromTag but includes Go type info
-func parseFieldFromTagWithType(fieldName, tag, goType string) *model.FieldMeta {
+// parseFieldFromTagWithType is like parseFieldFromTag but maps the Go type to a
+// SQL type and infers nullability from pointer-ness. A pointer field is marked
+// nullable (a tag may also set it). The timestamp type is portable "TIMESTAMP";
+// dialects render it natively (Postgres accepts it as a timestamp column).
+func parseFieldFromTagWithType(fieldName, tag, goType string, isPointer bool) *model.FieldMeta {
 	field := parseFieldFromTag(fieldName, tag)
 	if field == nil {
 		return nil
 	}
 
+	if isPointer {
+		field.Nullable = true
+	}
+
 	// Set appropriate SQL type based on Go type if not explicitly set
 	if _, hasType := field.Tags["type"]; !hasType {
 		switch goType {
-		case "int", "int32", "int64":
+		case "int", "int8", "int16", "int32", "int64",
+			"uint", "uint8", "uint16", "uint32", "uint64":
 			field.Tags["type"] = "INTEGER"
 		case "float32", "float64":
 			field.Tags["type"] = "REAL"
 		case "bool":
 			field.Tags["type"] = "BOOLEAN"
+		case "time.Time":
+			field.Tags["type"] = "TIMESTAMP"
+		case "[]byte":
+			field.Tags["type"] = "BLOB"
 		default:
 			field.Tags["type"] = "TEXT"
 		}
@@ -244,6 +269,18 @@ func parseFieldFromTag(fieldName, tag string) *model.FieldMeta {
 			field.Tags["type"] = strings.TrimPrefix(opt, "type:")
 		} else if strings.HasPrefix(opt, "default:") {
 			field.Tags["default"] = strings.TrimPrefix(opt, "default:")
+		} else if opt == "unique" || opt == "unique_index" {
+			field.Indexed = true
+			field.Unique = true
+		} else if opt == "index" {
+			field.Indexed = true
+		} else if strings.HasPrefix(opt, "index:") {
+			field.Index = strings.TrimPrefix(opt, "index:")
+			field.Indexed = true
+		} else if strings.HasPrefix(opt, "unique_index:") {
+			field.Index = strings.TrimPrefix(opt, "unique_index:")
+			field.Indexed = true
+			field.Unique = true
 		}
 	}
 

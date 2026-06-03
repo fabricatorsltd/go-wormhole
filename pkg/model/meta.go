@@ -12,7 +12,9 @@ type FieldMeta struct {
 	PrimaryKey bool
 	AutoIncr   bool
 	Nullable   bool
-	Index      string // secondary index name, if any
+	Index      string // explicit secondary index name, if any
+	Indexed    bool   // a secondary index is requested (name derived if Index is empty)
+	Unique     bool   // the index is unique
 }
 
 // RelationKind classifies a navigation field on an entity.

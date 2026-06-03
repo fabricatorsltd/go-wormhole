@@ -344,20 +344,7 @@ func cliDatabaseUpdate() {
 			os.Exit(1)
 		}
 
-		for _, stmt := range strings.Split(string(content), ";") {
-			stmt = strings.TrimSpace(stmt)
-			// skip comment-only or empty blocks
-			var nonComment []string
-			for _, line := range strings.Split(stmt, "\n") {
-				trimmed := strings.TrimSpace(line)
-				if trimmed != "" && !strings.HasPrefix(trimmed, "--") {
-					nonComment = append(nonComment, line)
-				}
-			}
-			stmt = strings.TrimSpace(strings.Join(nonComment, "\n"))
-			if stmt == "" {
-				continue
-			}
+		for _, stmt := range migrations.SplitStatements(string(content)) {
 			if _, err := tx.ExecContext(ctx, stmt); err != nil {
 				_ = tx.Rollback()
 				fmt.Fprintf(os.Stderr, "Error executing migration %s: %v\n", id, err)

@@ -181,14 +181,25 @@ func columnChanged(old *ColumnDef, new *ColumnDef) bool {
 func indexOpsForMeta(meta *model.EntityMeta) []MigrationOp {
 	var ops []MigrationOp
 	for _, f := range meta.Fields {
-		if f.Index != "" {
-			ops = append(ops, CreateIndexOp{
-				Name:    f.Index,
-				Table:   meta.Name,
-				Columns: []string{f.Column},
-				Unique:  false,
-			})
+		if f.Index == "" && !f.Indexed && !f.Unique {
+			continue
 		}
+		// Index names are schema-global in some engines (e.g. Postgres), so an
+		// auto-derived name is table-qualified and deterministic.
+		name := f.Index
+		if name == "" {
+			prefix := "idx"
+			if f.Unique {
+				prefix = "uniq"
+			}
+			name = prefix + "_" + meta.Name + "_" + f.Column
+		}
+		ops = append(ops, CreateIndexOp{
+			Name:    name,
+			Table:   meta.Name,
+			Columns: []string{f.Column},
+			Unique:  f.Unique,
+		})
 	}
 	return ops
 }

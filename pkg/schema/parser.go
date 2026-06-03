@@ -81,7 +81,9 @@ func ParseType(t reflect.Type) *model.EntityMeta {
 			PrimaryKey: fm.Has("primary_key"),
 			AutoIncr:   fm.Has("auto_increment"),
 			Nullable:   fm.Has("nullable"),
-			Index:      fm.Get("index"),
+			Index:      firstNonEmpty(fm.Get("index"), fm.Get("unique_index")),
+			Indexed:    fm.Has("index") || fm.Has("unique") || fm.Has("unique_index"),
+			Unique:     fm.Has("unique") || fm.Has("unique_index"),
 		}
 
 		if v := fm.Get("type"); v != "" {
@@ -148,6 +150,16 @@ func relationTarget(t reflect.Type) reflect.Type {
 // value (mapped to a column) rather than a related entity.
 func isScalarStruct(t reflect.Type) bool {
 	return t == reflect.TypeOf(time.Time{})
+}
+
+// firstNonEmpty returns the first non-empty string among its arguments.
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // parseRelation builds Relation metadata for a navigation field using struct
