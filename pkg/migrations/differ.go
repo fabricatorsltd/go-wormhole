@@ -17,6 +17,7 @@ func ComputeDiff(targets []*model.EntityMeta, current DatabaseSchema) []Migratio
 	}
 
 	targetNames := make(map[string]bool, len(targets))
+	fks := buildForeignKeys(targets)
 
 	for _, meta := range targets {
 		targetNames[meta.Name] = true
@@ -24,14 +25,14 @@ func ComputeDiff(targets []*model.EntityMeta, current DatabaseSchema) []Migratio
 
 		if !exists {
 			// Whole table is new
-			ops = append(ops, createTableFromMeta(meta))
+			ops = append(ops, createTableFromMeta(meta, fks[meta.Name]))
 			// Add indexes for new table
 			ops = append(ops, indexOpsForMeta(meta)...)
 			continue
 		}
 
 		// Table exists — diff columns
-		ops = append(ops, diffColumns(meta, existing)...)
+		ops = append(ops, diffColumns(meta, existing, fks[meta.Name])...)
 		ops = append(ops, indexOpsForMeta(meta)...)
 	}
 
@@ -45,15 +46,68 @@ func ComputeDiff(targets []*model.EntityMeta, current DatabaseSchema) []Migratio
 	return ops
 }
 
-func createTableFromMeta(meta *model.EntityMeta) CreateTableOp {
+func createTableFromMeta(meta *model.EntityMeta, fks map[string]*ColumnRef) CreateTableOp {
 	cols := make([]ColumnDef, 0, len(meta.Fields))
 	for _, f := range meta.Fields {
-		cols = append(cols, fieldToColumnDef(f))
+		cd := fieldToColumnDef(f)
+		if ref, ok := fks[cd.Name]; ok {
+			cd.Ref = ref
+		}
+		cols = append(cols, cd)
 	}
 	return CreateTableOp{Table: meta.Name, Columns: cols}
 }
 
-func diffColumns(meta *model.EntityMeta, table *TableSchema) []MigrationOp {
+// buildForeignKeys resolves the set of foreign keys for every table from the
+// relation metadata across all targets. The result is keyed by table name then
+// by FK column name. Many-to-many join tables are skipped (the join entity, if
+// modeled, declares its own FKs via BelongsTo).
+func buildForeignKeys(targets []*model.EntityMeta) map[string]map[string]*ColumnRef {
+	byName := make(map[string]*model.EntityMeta, len(targets))
+	for _, m := range targets {
+		byName[m.Name] = m
+	}
+	pkColumn := func(table, fallback string) string {
+		if m := byName[table]; m != nil && m.PrimaryKey != nil {
+			return m.PrimaryKey.Column
+		}
+		return fallback
+	}
+
+	out := make(map[string]map[string]*ColumnRef)
+	put := func(table, col string, ref *ColumnRef) {
+		if out[table] == nil {
+			out[table] = make(map[string]*ColumnRef)
+		}
+		// First declaration wins; avoids duplicate FKs when both sides of a
+		// relationship are modeled (BelongsTo + OneToMany).
+		if _, exists := out[table][col]; !exists {
+			out[table][col] = ref
+		}
+	}
+
+	for _, owner := range targets {
+		for _, rel := range owner.Relations {
+			switch rel.Kind {
+			case model.RelationBelongsTo:
+				// FK on the owner referencing the target's primary key.
+				put(owner.Name, rel.LocalKey, &ColumnRef{
+					Table:  rel.TargetEntity,
+					Column: pkColumn(rel.TargetEntity, rel.ForeignKey),
+				})
+			case model.RelationOneToMany, model.RelationOneToOne:
+				// FK on the related table referencing the owner's local key.
+				put(rel.TargetEntity, rel.ForeignKey, &ColumnRef{
+					Table:  owner.Name,
+					Column: rel.LocalKey,
+				})
+			}
+		}
+	}
+	return out
+}
+
+func diffColumns(meta *model.EntityMeta, table *TableSchema, fks map[string]*ColumnRef) []MigrationOp {
 	var ops []MigrationOp
 
 	codeFields := make(map[string]bool, len(meta.Fields))
@@ -64,9 +118,13 @@ func diffColumns(meta *model.EntityMeta, table *TableSchema) []MigrationOp {
 
 		if !exists {
 			// New column
+			cd := fieldToColumnDef(f)
+			if ref, ok := fks[cd.Name]; ok {
+				cd.Ref = ref
+			}
 			ops = append(ops, AddColumnOp{
 				Table:  meta.Name,
-				Column: fieldToColumnDef(f),
+				Column: cd,
 			})
 			continue
 		}

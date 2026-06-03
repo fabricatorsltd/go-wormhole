@@ -2,6 +2,16 @@ package migrations
 
 import "reflect"
 
+// ColumnRef is a column-level foreign-key reference. It renders as
+// REFERENCES "table" ("column") [ON DELETE <action>] inline in the column
+// definition, which every supported dialect accepts (including SQLite, where
+// table-level ALTER ADD CONSTRAINT is unavailable).
+type ColumnRef struct {
+	Table    string // referenced table
+	Column   string // referenced column
+	OnDelete string // optional action: CASCADE, SET NULL, RESTRICT, ... (empty = dialect default)
+}
+
 // ColumnDef describes a single column in a CREATE TABLE or ADD COLUMN.
 type ColumnDef struct {
 	Name       string // storage column name (snake_case)
@@ -9,8 +19,9 @@ type ColumnDef struct {
 	PrimaryKey bool
 	AutoIncr   bool
 	Nullable   bool
-	Default    string // literal default expression, e.g. "'active'"
-	Index      string // secondary index name (empty = none)
+	Default    string     // literal default expression, e.g. "'active'"
+	Index      string     // secondary index name (empty = none)
+	Ref        *ColumnRef // foreign-key reference (nil = none)
 	GoType     reflect.Type
 }
 

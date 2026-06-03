@@ -227,6 +227,13 @@ func (b *SchemaBuilder) renderColumnDef(c ColumnDef, q func(string) string) stri
 	if c.Default != "" {
 		parts = append(parts, "DEFAULT "+c.Default)
 	}
+	if c.Ref != nil {
+		ref := fmt.Sprintf("REFERENCES %s (%s)", q(c.Ref.Table), q(c.Ref.Column))
+		if c.Ref.OnDelete != "" {
+			ref += " ON DELETE " + c.Ref.OnDelete
+		}
+		parts = append(parts, ref)
+	}
 	return strings.Join(parts, " ")
 }
 

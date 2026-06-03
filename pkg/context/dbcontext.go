@@ -245,16 +245,31 @@ func (c *DbContext) SaveChanges(ctx stdctx.Context) error {
 // flush executes the pending operations inside a transaction,
 // optionally wrapped in a retry policy and circuit breaker.
 func (c *DbContext) flush(ctx stdctx.Context, pending []*model.Entry) error {
+	// Order inserts so that a new parent is written before any new child that
+	// references it, and fix up foreign-key values from the in-memory object
+	// graph. With no relationships this is the original order, untouched.
+	order, err := planInsertOrder(pending)
+	if err != nil {
+		return err
+	}
+
 	commit := func() error {
 		tx, err := c.provider.Begin(ctx)
 		if err != nil {
 			return fmt.Errorf("begin tx: %w", err)
 		}
 
-		for _, e := range pending {
+		for _, idx := range order {
+			e := pending[idx]
+			if e.State == model.Added {
+				c.fixupBelongsToFKs(e)
+			}
 			if err := c.applyEntry(ctx, tx, e); err != nil {
 				_ = tx.Rollback()
 				return err
+			}
+			if e.State == model.Added {
+				c.fixupChildFKs(e)
 			}
 		}
 

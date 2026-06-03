@@ -161,5 +161,12 @@ func writeColumnLiteral(w *strings.Builder, c ColumnDef) {
 	if c.Default != "" {
 		w.WriteString(fmt.Sprintf(", Default: %q", c.Default))
 	}
+	if c.Ref != nil {
+		w.WriteString(fmt.Sprintf(", Ref: &migrations.ColumnRef{Table: %q, Column: %q", c.Ref.Table, c.Ref.Column))
+		if c.Ref.OnDelete != "" {
+			w.WriteString(fmt.Sprintf(", OnDelete: %q", c.Ref.OnDelete))
+		}
+		w.WriteString("}")
+	}
 	w.WriteString("}")
 }

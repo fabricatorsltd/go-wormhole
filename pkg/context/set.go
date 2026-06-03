@@ -25,6 +25,7 @@ type EntitySet struct {
 	havingPreds   []query.Node
 	aggregates    []query.Aggregate
 	joins         []query.JoinSpec
+	includes      []string
 }
 
 // Set creates an EntitySet bound to the given destination.
@@ -157,15 +158,35 @@ func (s *EntitySet) LeftJoin(entity string, on query.Node) *EntitySet {
 	return s
 }
 
+// Include eager-loads the named navigation relations after the main query
+// runs, using a separate batched query per relation (no cartesian JOIN).
+// Names are the Go navigation field names (e.g. "Orders", "Profile"); the
+// type-safe dsl.FieldName(&u, &u.Orders) resolves one at compile time.
+// Chainable.
+func (s *EntitySet) Include(relations ...string) *EntitySet {
+	s.includes = append(s.includes, relations...)
+	return s
+}
+
 // All executes the built query and scans results into dest
-// (must be *[]T or *[]*T).
+// (must be *[]T or *[]*T). When Include was used, each named relation is
+// loaded and stitched onto the results before returning.
 func (s *EntitySet) All() error {
 	q := s.buildQuery()
 
 	ctx := s.ctx.opCtx()
-	return s.ctx.withReadResilience(ctx, func() error {
+	if err := s.ctx.withReadResilience(ctx, func() error {
 		return s.ctx.provider.Execute(ctx, s.meta, q, s.dest)
-	})
+	}); err != nil {
+		return err
+	}
+
+	for _, name := range s.includes {
+		if err := s.loadInclude(ctx, name); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Delete performs a bulk DELETE against the underlying provider matching the

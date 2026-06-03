@@ -1,113 +1,165 @@
 # Entity Relationships
 
-`go-wormhole` manages database relationships through Go struct tags and pointers. It supports **1:1**, **1:N**, and **N:M** relationships with automatic JOIN generation and eager loading.
+`go-wormhole` models relationships through Go struct tags and navigation
+fields (pointers and slices of pointers). It supports **1:1**, **1:N**, and
+**N:M** declarations, generates `FOREIGN KEY` constraints in migrations, and
+eager-loads related rows with `Include`.
+
+Current scope:
+
+- **1:1, 1:N, belongs-to**: parsed, foreign keys generated, eager loading works.
+- **N:M**: parsed and foreign-key aware, but eager loading via `Include` is not
+  yet implemented (it returns an error).
+- **Cascade delete** is not yet implemented. Foreign-key fix-up and parent-before-child
+  insert ordering on `Save` are.
 
 ## Defining Relationships
 
-Relationships are defined using the `db` tag with the `ref` (reference) and `fk` (foreign key) attributes.
+A navigation field is any `*Other` or `[]*Other` field, where `Other` is
+another entity struct. Navigation fields are not stored as columns. The `db`
+tag uses `;`-separated pairs with `:` key/value separators, the same grammar as
+scalar columns (`db:"column:id;primary_key;auto_increment"`).
 
-### One-to-One (1:1)
+Relationship attributes:
 
-In a 1:1 relationship, one entity points to exactly one instance of another entity.
-
-```go
-type User struct {
-    ID      int      `db:"id,pk"`
-    Name    string   `db:"name"`
-    Profile *Profile `db:"ref=ID"` // Parent: references Profile where Profile.UserID == User.ID
-}
-
-type Profile struct {
-    ID     int    `db:"id,pk"`
-    Bio    string `db:"bio"`
-    UserID int    `db:"user_id"` // The foreign key
-    User   *User  `db:"ref=user_id"` // Child: references User where User.ID == Profile.UserID
-}
-```
-
-- **`ref=ID`** on `User.Profile` tells the engine to look for a `Profile` where its foreign key matches `User.ID`.
-- **`ref=user_id`** on `Profile.User` tells the engine to look for a `User` where `User.ID` matches `Profile.UserID`.
+- `fk:<column>`: the foreign-key column on the *child* table.
+- `ref:<column>`: the key column on the *owning* table (defaults to its primary key).
+- `join:<table>`: the join table for a many-to-many relationship.
 
 ### One-to-Many (1:N)
 
-The most common relationship. Use a slice of pointers to represent the collection.
+The most common relationship. Use a slice of pointers for the collection.
 
 ```go
 type User struct {
-    ID     int      `db:"id,pk"`
-    Orders []*Order `db:"ref=ID"` // One user has many orders
+    ID     int      `db:"column:id;primary_key;auto_increment"`
+    Name   string   `db:"column:name"`
+    Orders []*Order `db:"fk:user_id"` // one user has many orders
 }
 
 type Order struct {
-    ID     int     `db:"id,pk"`
-    Total  float64 `db:"total"`
-    UserID int     `db:"user_id"` // Foreign key in the child table
+    ID     int     `db:"column:id;primary_key;auto_increment"`
+    UserID int     `db:"column:user_id"` // foreign key on the child table
+    Total  float64 `db:"column:total"`
 }
 ```
 
-Wormhole automatically detects that `Order` belongs to `User` by looking for a field that matches the `User` type or a naming convention (e.g., `UserID`).
+If you omit `fk:`, the foreign-key column defaults to the snake_case owner type
+name plus `_id` (e.g. `User` → `user_id`).
+
+### One-to-One (1:1)
+
+A single pointer. When the owning struct does **not** carry the foreign key, the
+key lives on the related table (has-one):
+
+```go
+type User struct {
+    ID      int      `db:"column:id;primary_key;auto_increment"`
+    Profile *Profile `db:"fk:user_id"` // FK user_id lives on profile
+}
+
+type Profile struct {
+    ID     int    `db:"column:id;primary_key;auto_increment"`
+    UserID int    `db:"column:user_id"`
+    Bio    string `db:"column:bio"`
+}
+```
+
+### Belongs-To
+
+When the owning struct carries the foreign key (a `<Nav>ID` or `<Target>ID`
+column), the pointer is a belongs-to back-reference:
+
+```go
+type Order struct {
+    ID     int    `db:"column:id;primary_key;auto_increment"`
+    UserID int    `db:"column:user_id"` // FK on this table
+    User   *User  `db:"ref"`            // belongs-to User via user_id
+}
+```
 
 ### Many-to-Many (N:M)
 
-N:M relationships require a join table. Define the join table using the `join` attribute.
+N:M relationships use a join table named with `join:`:
 
 ```go
 type Student struct {
-    ID      int       `db:"id,pk"`
-    Courses []*Course `db:"join=enrollments,ref=student_id"`
+    ID      int       `db:"column:id;primary_key;auto_increment"`
+    Courses []*Course `db:"join:enrollments;ref:student_id;fk:course_id"`
 }
 
 type Course struct {
-    ID       int        `db:"id,pk"`
-    Students []*Student `db:"join=enrollments,ref=course_id"`
-}
-
-// The join table (enrollments)
-type Enrollment struct {
-    StudentID int `db:"student_id,pk"`
-    CourseID  int `db:"course_id,pk"`
+    ID       int        `db:"column:id;primary_key;auto_increment"`
+    Students []*Student `db:"join:enrollments;ref:course_id;fk:student_id"`
 }
 ```
 
+For N:M, `ref:` and `fk:` name the owner and target columns *in the join table*.
+Defaults are the snake_case type names plus `_id`. Eager loading of N:M is not
+yet supported.
+
 ## Eager Loading with `Include`
 
-By default, relationships are **not loaded** to save resources. Use the `.Include()` method in the fluent API to load them.
+By default, relationships are not loaded. `Include` loads them with one batched
+`WHERE key IN (...)` query per relation (no cartesian JOIN):
 
 ```go
 u := &User{}
 
-users, err := db.Set(&User{}).
-    Include(&u.Orders). // Load all orders for each user
-    Where(dsl.Eq(&u, &u.Name, "Alice")).
+var users []*User
+err := db.Set(&users).
+    Include("Orders").  // load all orders for each user
+    Include("Profile").
+    Where(dsl.Eq(u, &u.Name, "Alice")).
     All()
 
-// Now users[0].Orders is populated
-fmt.Println(len(users[0].Orders))
+// users[0].Orders and users[0].Profile are now populated.
 ```
 
-### Nested Includes
-
-You can chain includes to load deep relationship trees:
+`Include` takes the Go navigation field name. For a compile-time-checked name,
+resolve it through the pointer DSL:
 
 ```go
-users, err := db.Set(&User{}).
-    Include(&u.Orders).
-    Include(&u.Profile).
-    All()
+db.Set(&users).Include(dsl.FieldName(u, &u.Orders)).All()
 ```
 
 ## Foreign Key Constraints
 
-When using the **Migrations Engine**, `go-wormhole` uses these metadata to generate `FOREIGN KEY` constraints in your SQL schema:
+The migrations engine emits a column-level `FOREIGN KEY` reference for each
+relationship when it creates a table or adds a foreign-key column:
 
 ```sql
-ALTER TABLE "orders" 
-ADD CONSTRAINT "fk_orders_user" 
-FOREIGN KEY ("user_id") REFERENCES "users" ("id");
+CREATE TABLE "order" (
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+  "user_id" INTEGER NOT NULL REFERENCES "user" ("id"),
+  "total" REAL NOT NULL DEFAULT 0
+);
 ```
+
+> SQLite does not enforce foreign keys unless `PRAGMA foreign_keys = ON` is set
+> on the connection. PostgreSQL, MySQL, and SQL Server enforce them by default.
+
+## Saving Object Graphs
+
+When you `Add` a new parent and its new children in any order, `Save` orders the
+inserts parent-first and writes each generated primary key into the children's
+foreign-key columns before they are inserted:
+
+```go
+user := &User{Name: "Alice"}
+o1 := &Order{Total: 10, User: user}
+user.Orders = []*Order{o1}
+
+db.Add(o1, user) // order added before its parent; still works
+db.Save()        // user inserted first; o1.UserID set to user.ID
+```
+
+A dependency cycle among new rows (two entities that each belong to the other)
+is reported as an error rather than ordered arbitrarily.
 
 ## Conventions vs. Explicit Configuration
 
-1. **Explicit PK**: Always mark your primary key with `pk` (e.g., `db:"id,pk"`).
-2. **Implicit FK**: If a field is named `EntityID` (e.g., `UserID`), it's automatically treated as a foreign key to `User`.
-3. **Explicit Ref**: Use `ref=field_name` when the naming doesn't follow conventions or for 1:1 "back-references".
+1. **Primary key**: mark it with `primary_key` (e.g. `db:"column:id;primary_key"`).
+2. **Implicit FK**: a `<Nav>ID` / `<Target>ID` field makes a pointer a belongs-to;
+   a collection's FK defaults to `<owner_type>_id`.
+3. **Explicit keys**: use `fk:` / `ref:` when names do not follow the conventions.
