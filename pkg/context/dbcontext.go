@@ -283,10 +283,22 @@ func (c *DbContext) flush(ctx stdctx.Context, pending []*model.Entry) error {
 		}
 	}
 
+	var runErr error
 	if len(c.retry) > 0 {
-		return resiliency.Retry(ctx, commit, c.retry...)
+		runErr = resiliency.Retry(ctx, commit, c.retry...)
+	} else {
+		runErr = commit()
 	}
-	return commit()
+	if runErr != nil {
+		return runErr
+	}
+
+	// The transaction committed: advance in-memory version tokens to match the
+	// server-side bump, so the upcoming AcceptAll re-snapshots the new value.
+	// Done here (post-commit) rather than inside the provider so a rollback can
+	// never leave an entity ahead of the database.
+	bumpVersionTokens(pending)
+	return nil
 }
 
 func (c *DbContext) applyEntry(ctx stdctx.Context, tx provider.Tx, e *model.Entry) error {

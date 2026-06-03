@@ -201,3 +201,39 @@ err := ctx.SaveChanges(ctx)    // explicit context
 // Cleanup
 ctx.Close()
 ```
+
+## Optimistic Concurrency
+
+Tag an integer column with `version` to turn it into a concurrency token:
+
+```go
+type Document struct {
+    ID      int    `db:"column:id;primary_key;auto_increment"`
+    Title   string `db:"column:title"`
+    Version int    `db:"column:version;version"`
+}
+```
+
+Every update of a versioned entity bumps the column server-side and guards the
+statement on the value that was loaded:
+
+```sql
+UPDATE "document" SET "title" = ?, "version" = "version" + 1
+WHERE "id" = ? AND "version" = ?
+```
+
+If another transaction changed (or deleted) the row in the meantime, the guard
+matches zero rows and `Save` returns `provider.ErrConcurrencyConflict`. The
+transaction is rolled back and the entity stays tracked, so the caller can
+reload and retry:
+
+```go
+if errors.Is(err, provider.ErrConcurrencyConflict) {
+    // reload the row and reapply the change
+}
+```
+
+On success the new version is written back onto the in-memory entity (after the
+transaction commits, so a rollback never leaves it ahead of the database).
+Optimistic concurrency is enforced by the SQL providers on updates; deletes are
+not version-guarded yet, and other backends ignore the token.

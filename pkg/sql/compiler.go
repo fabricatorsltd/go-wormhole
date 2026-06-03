@@ -277,9 +277,20 @@ func (c *Compiler) Update(meta *model.EntityMeta, values map[string]any, changed
 		if _, ok := changedSet[f.FieldName]; !ok {
 			continue
 		}
+		// The version column is bumped server-side below, never set directly.
+		if meta.Version != nil && f.FieldName == meta.Version.FieldName {
+			continue
+		}
 		sets = append(sets, fmt.Sprintf("%s = %s", c.quote(f.Column), c.ph(idx)))
 		params = append(params, values[f.FieldName])
 		idx++
+	}
+
+	// Optimistic concurrency: increment the version column and guard the WHERE
+	// on its current value, so a stale write matches zero rows.
+	if meta.Version != nil {
+		vcol := c.quote(meta.Version.Column)
+		sets = append(sets, fmt.Sprintf("%s = %s + 1", vcol, vcol))
 	}
 
 	if len(sets) == 0 {
@@ -291,13 +302,20 @@ func (c *Compiler) Update(meta *model.EntityMeta, values map[string]any, changed
 		pkCol = meta.PrimaryKey.Column
 	}
 
-	sql := fmt.Sprintf("UPDATE %s SET %s WHERE %s = %s",
+	var where strings.Builder
+	where.WriteString(fmt.Sprintf("%s = %s", c.quote(pkCol), c.ph(idx)))
+	params = append(params, pkValue)
+	idx++
+	if meta.Version != nil {
+		where.WriteString(fmt.Sprintf(" AND %s = %s", c.quote(meta.Version.Column), c.ph(idx)))
+		params = append(params, values[meta.Version.FieldName])
+	}
+
+	sql := fmt.Sprintf("UPDATE %s SET %s WHERE %s",
 		c.quote(meta.Name),
 		strings.Join(sets, ", "),
-		c.quote(pkCol),
-		c.ph(idx),
+		where.String(),
 	)
-	params = append(params, pkValue)
 	return Compiled{SQL: sql, Params: params}
 }
 

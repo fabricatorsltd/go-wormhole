@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
@@ -83,6 +84,12 @@ type CompiledQuery struct {
 	SQL    string
 	Params []any
 }
+
+// ErrConcurrencyConflict is returned by an Update when an entity carries an
+// optimistic-concurrency version column and the row was changed or deleted by
+// another transaction since it was loaded (the versioned UPDATE matched no
+// rows). Callers should reload the entity and retry the operation.
+var ErrConcurrencyConflict = stderrors.New("optimistic concurrency conflict: row was modified or deleted by another transaction")
 
 // BulkDeleter is an optional interface a Provider may implement to delete
 // many rows in a single statement, matching a query AST. Providers that do

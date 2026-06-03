@@ -97,9 +97,17 @@ func ParseType(t reflect.Type) *model.EntityMeta {
 			field.Tags["json"] = "true"
 		}
 
+		if fm.Has("version") {
+			// Field is an optimistic-concurrency token (integer columns only).
+			field.Tags["version"] = "true"
+		}
+
 		meta.Fields = append(meta.Fields, field)
 		if field.PrimaryKey {
 			meta.PrimaryKey = &meta.Fields[len(meta.Fields)-1]
+		}
+		if _, ok := field.Tags["version"]; ok && isIntegerKind(sf.Type.Kind()) {
+			meta.Version = &meta.Fields[len(meta.Fields)-1]
 		}
 	}
 
@@ -160,6 +168,16 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// isIntegerKind reports whether k is a signed or unsigned integer kind.
+func isIntegerKind(k reflect.Kind) bool {
+	switch k {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return true
+	}
+	return false
 }
 
 // parseRelation builds Relation metadata for a navigation field using struct

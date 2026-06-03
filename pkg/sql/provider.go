@@ -180,10 +180,28 @@ func (p *Provider) Update(ctx context.Context, meta *model.EntityMeta, entity an
 		return nil
 	}
 	p.logQuery(c)
-	return p.retryDo(ctx, func() error {
-		_, err := p.db.ExecContext(ctx, c.SQL, c.Params...)
-		return err
+	var res sql.Result
+	err := p.retryDo(ctx, func() error {
+		r, err := p.db.ExecContext(ctx, c.SQL, c.Params...)
+		if err != nil {
+			return err
+		}
+		res = r
+		return nil
 	})
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if cerr := versionConflict(meta, rows); cerr != nil {
+		return cerr
+	}
+	// Single statement: ExecContext autocommits, so the bump is durable.
+	writeBackVersion(meta, entity)
+	return nil
 }
 
 func (p *Provider) Delete(ctx context.Context, meta *model.EntityMeta, pkValue any) error {
@@ -383,8 +401,17 @@ func (t *sqlTx) Update(ctx context.Context, meta *model.EntityMeta, entity any, 
 		return nil
 	}
 	t.logQuery(c)
-	_, err := t.tx.ExecContext(ctx, c.SQL, c.Params...)
-	return err
+	res, err := t.tx.ExecContext(ctx, c.SQL, c.Params...)
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	// Detect the conflict now (to roll the transaction back), but defer the
+	// in-memory version bump until the caller commits; see DbContext.flush.
+	return versionConflict(meta, rows)
 }
 
 func (t *sqlTx) Delete(ctx context.Context, meta *model.EntityMeta, pkValue any) error {
@@ -504,6 +531,41 @@ func pkFromStruct(meta *model.EntityMeta, entity any) any {
 		val = val.Elem()
 	}
 	return val.FieldByName(meta.PrimaryKey.FieldName).Interface()
+}
+
+// versionConflict reports the optimistic-concurrency outcome of a versioned
+// UPDATE: when the entity has a version column and the statement matched no
+// rows, the row was changed or deleted by another transaction. It does not
+// mutate the entity, so it is safe to call inside a not-yet-committed
+// transaction (the caller decides when to write the new version back).
+func versionConflict(meta *model.EntityMeta, rows int64) error {
+	if meta.Version != nil && rows == 0 {
+		return provider.ErrConcurrencyConflict
+	}
+	return nil
+}
+
+// writeBackVersion increments the in-memory version field by one to match the
+// server-side bump. Call only after the UPDATE has been committed, otherwise a
+// later rollback would leave the entity ahead of the database.
+func writeBackVersion(meta *model.EntityMeta, entity any) {
+	if meta.Version == nil {
+		return
+	}
+	val := reflect.ValueOf(entity)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+	f := val.FieldByName(meta.Version.FieldName)
+	if !f.IsValid() || !f.CanSet() {
+		return
+	}
+	switch f.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		f.SetInt(f.Int() + 1)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		f.SetUint(f.Uint() + 1)
+	}
 }
 
 func scanRow(meta *model.EntityMeta, row *sql.Row, dest any) error {

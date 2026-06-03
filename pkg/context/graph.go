@@ -143,6 +143,31 @@ func (c *DbContext) fixupChildFKs(e *model.Entry) {
 	}
 }
 
+// bumpVersionTokens advances the in-memory optimistic-concurrency version of
+// every Modified entity by one, matching the server-side `version = version + 1`
+// applied during flush. Called only after the transaction commits.
+func bumpVersionTokens(pending []*model.Entry) {
+	for _, e := range pending {
+		if e.State != model.Modified || e.Meta.Version == nil {
+			continue
+		}
+		sv := structValue(e.Entity)
+		if !sv.IsValid() {
+			continue
+		}
+		f := sv.FieldByName(e.Meta.Version.FieldName)
+		if !f.IsValid() || !f.CanSet() {
+			continue
+		}
+		switch f.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			f.SetInt(f.Int() + 1)
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			f.SetUint(f.Uint() + 1)
+		}
+	}
+}
+
 // --- reflection helpers ---
 
 func entityPtr(entity any) uintptr {

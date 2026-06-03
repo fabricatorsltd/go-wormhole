@@ -70,6 +70,7 @@ type EntityMeta struct {
 	Relations   []Relation   // navigation fields (not stored as columns)
 	PrimaryKeys []*FieldMeta // composite PK fields
 	PrimaryKey  *FieldMeta   // shortcut to the first PK field (common case)
+	Version     *FieldMeta   // optimistic-concurrency version column, if any
 	fieldIndex  map[string]int
 }
 
