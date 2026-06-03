@@ -111,6 +111,33 @@ func TestParse_JSONTagBeatsNavigation(t *testing.T) {
 	}
 }
 
+type versionedEntity struct {
+	ID      int    `db:"column:id;primary_key;auto_increment"`
+	Title   string `db:"column:title"`
+	Version int    `db:"column:version;version"`
+}
+
+type badVersionEntity struct {
+	ID  int    `db:"column:id;primary_key;auto_increment"`
+	Tag string `db:"column:tag;version"` // not an integer: must be ignored
+}
+
+func TestParse_VersionToken(t *testing.T) {
+	meta := Parse(&versionedEntity{})
+	if meta.Version == nil {
+		t.Fatal("integer version field not recorded as concurrency token")
+	}
+	if meta.Version.Column != "version" {
+		t.Errorf("version column: got %q, want version", meta.Version.Column)
+	}
+
+	// A non-integer version tag must not be treated as a concurrency token.
+	bad := Parse(&badVersionEntity{})
+	if bad.Version != nil {
+		t.Errorf("non-integer version field was wrongly recorded: %+v", bad.Version)
+	}
+}
+
 func TestParse_BelongsTo(t *testing.T) {
 	meta := Parse(&relOrderWithOwner{})
 	user := meta.Relation("User")

@@ -513,6 +513,24 @@ func TestGenerateMigrationFile(t *testing.T) {
 	}
 }
 
+func TestGenerateMigrationFile_ForeignKey(t *testing.T) {
+	ops := []migrations.MigrationOp{
+		migrations.CreateTableOp{
+			Table: "orders",
+			Columns: []migrations.ColumnDef{
+				{Name: "id", SQLType: "INTEGER", PrimaryKey: true, AutoIncr: true},
+				{Name: "user_id", SQLType: "INTEGER", Ref: &migrations.ColumnRef{Table: "users", Column: "id"}},
+			},
+		},
+	}
+
+	src := migrations.GenerateMigrationFile("AddOrders", ops)
+
+	if !strings.Contains(src, `Ref: &migrations.ColumnRef{Table: "users", Column: "id"}`) {
+		t.Errorf("generated migration missing foreign-key Ref literal:\n%s", src)
+	}
+}
+
 // --- GoTypeToSQL tests ---
 
 func TestGoTypeToSQL(t *testing.T) {
