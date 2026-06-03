@@ -9,6 +9,7 @@ import (
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
 	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
 	"github.com/fabricatorsltd/go-wormhole/pkg/query"
+	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
 	"github.com/fabricatorsltd/go-wormhole/pkg/tracker"
 	"github.com/mirkobrombin/go-foundation/pkg/errors"
 	"github.com/mirkobrombin/go-foundation/pkg/hooks"
@@ -116,6 +117,50 @@ func (c *DbContext) Detach(entities ...any) {
 // Entry returns the tracking entry for an entity.
 func (c *DbContext) Entry(entity any) (*model.Entry, bool) {
 	return c.tracker.Entry(entity)
+}
+
+// Transaction runs fn inside a single provider transaction, committing on
+// success and rolling back if fn returns an error. The provider.Tx passed
+// to fn exposes the entity operations (Insert/Update/Delete/Find/Execute);
+// a Tx from a SQL provider additionally satisfies the raw-SQL escape hatch
+// (type-assert to wormholesql.TxRunner) so hand-written SQL — e.g.
+// SELECT ... FOR UPDATE — runs atomically alongside ORM operations within
+// the same transaction. Changes tracked on the DbContext via Add/Save are
+// independent of this call and are not flushed here.
+func (c *DbContext) Transaction(ctx stdctx.Context, fn func(tx provider.Tx) error) error {
+	if ctx == nil {
+		ctx = c.opCtx()
+	}
+	tx, err := c.provider.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	if err := fn(tx); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
+	}
+	return nil
+}
+
+// Upsert performs an insert-or-update for entity in a single statement
+// using the provider's ON CONFLICT support. It requires the provider to
+// implement provider.Upserter (the SQL provider does); otherwise it errors.
+// conflict.Columns is the unique/PK target; an empty conflict.Update means
+// "leave the existing row" (DO NOTHING).
+func (c *DbContext) Upsert(ctx stdctx.Context, entity any, conflict provider.ConflictClause) error {
+	if ctx == nil {
+		ctx = c.opCtx()
+	}
+	up, ok := c.provider.(provider.Upserter)
+	if !ok {
+		return fmt.Errorf("provider %q does not support upsert", c.provider.Name())
+	}
+	meta := schema.Parse(entity)
+	_, err := up.Upsert(ctx, meta, entity, conflict)
+	return err
 }
 
 // --- Query ---

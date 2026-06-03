@@ -60,6 +60,24 @@ type Tx interface {
 	Execute(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error
 }
 
+// ConflictClause describes how an upsert resolves a unique- or
+// primary-key conflict. Columns is the conflict target (the unique/PK
+// columns to match on). An empty Update leaves the existing row untouched
+// (SQL DO NOTHING); otherwise the listed columns are overwritten from the
+// proposed row (SQL DO UPDATE SET col = EXCLUDED.col). Update columns must
+// be among the columns actually written by the insert.
+type ConflictClause struct {
+	Columns []string
+	Update  []string
+}
+
+// Upserter is an optional capability for providers that can perform an
+// insert-or-update in a single statement (SQL ON CONFLICT, document-store
+// upsert). DbContext.Upsert requires the provider to implement it.
+type Upserter interface {
+	Upsert(ctx context.Context, meta *model.EntityMeta, entity any, conflict ConflictClause) (any, error)
+}
+
 // CompiledQuery holds a pre-compiled query for inspection without execution.
 type CompiledQuery struct {
 	SQL    string

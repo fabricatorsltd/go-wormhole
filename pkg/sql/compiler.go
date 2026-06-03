@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
 	"github.com/fabricatorsltd/go-wormhole/pkg/query"
 )
 
@@ -203,6 +204,43 @@ func (c *Compiler) Insert(meta *model.EntityMeta, values map[string]any) Compile
 		strings.Join(placeholders, ", "),
 	)
 	return Compiled{SQL: sql, Params: params}
+}
+
+// InsertOnConflict compiles an INSERT ... ON CONFLICT statement, reusing
+// Insert's column/value/default handling and appending the conflict
+// resolution. An empty conflict.Update emits DO NOTHING; otherwise it emits
+// DO UPDATE SET col = EXCLUDED.col for each listed column. The EXCLUDED
+// pseudo-row is understood by both PostgreSQL and SQLite.
+func (c *Compiler) InsertOnConflict(meta *model.EntityMeta, values map[string]any, conflict provider.ConflictClause) Compiled {
+	base := c.Insert(meta, values)
+
+	var b strings.Builder
+	b.WriteString(base.SQL)
+	b.WriteString(" ON CONFLICT (")
+	for i, col := range conflict.Columns {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(c.quote(col))
+	}
+	b.WriteString(") ")
+
+	if len(conflict.Update) == 0 {
+		b.WriteString("DO NOTHING")
+	} else {
+		b.WriteString("DO UPDATE SET ")
+		for i, col := range conflict.Update {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			q := c.quote(col)
+			b.WriteString(q)
+			b.WriteString(" = EXCLUDED.")
+			b.WriteString(q)
+		}
+	}
+
+	return Compiled{SQL: b.String(), Params: base.Params}
 }
 
 // isZeroValue reports whether v is the Go zero-value for its type.
@@ -506,7 +544,7 @@ func (c *Compiler) compilePredicate(b *strings.Builder, params *[]any, p query.P
 			if p.Op == query.OpNotIn {
 				b.WriteString(" IS NOT NULL") // NOT IN (∅) ≡ always true for non-null
 			} else {
-				b.WriteString(" = NULL")      // IN (∅) ≡ always false
+				b.WriteString(" = NULL") // IN (∅) ≡ always false
 			}
 			return
 		}

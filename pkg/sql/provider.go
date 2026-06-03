@@ -154,6 +154,23 @@ func (p *Provider) Insert(ctx context.Context, meta *model.EntityMeta, entity an
 	return pkFromStruct(meta, entity), nil
 }
 
+// Upsert executes an INSERT ... ON CONFLICT for entity, implementing the
+// provider.Upserter capability. The conflict target is a caller-known
+// unique/PK column set, so there is no generated-PK writeback; it returns
+// the entity's (client-set) primary key.
+func (p *Provider) Upsert(ctx context.Context, meta *model.EntityMeta, entity any, conflict provider.ConflictClause) (any, error) {
+	c := p.compiler.InsertOnConflict(meta, structToMap(meta, entity), conflict)
+	p.logQuery(c)
+	err := p.retryDo(ctx, func() error {
+		_, err := p.db.ExecContext(ctx, c.SQL, c.Params...)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return pkFromStruct(meta, entity), nil
+}
+
 func (p *Provider) Update(ctx context.Context, meta *model.EntityMeta, entity any, changed []string) error {
 	values := structToMap(meta, entity)
 	pk := pkFromStruct(meta, entity)
@@ -321,6 +338,40 @@ func (t *sqlTx) Insert(ctx context.Context, meta *model.EntityMeta, entity any) 
 	t.logQuery(c)
 	_, err := t.tx.ExecContext(ctx, c.SQL, c.Params...)
 	return pkFromStruct(meta, entity), err
+}
+
+// Upsert executes an INSERT ... ON CONFLICT inside the transaction,
+// implementing provider.Upserter on the SQL Tx.
+func (t *sqlTx) Upsert(ctx context.Context, meta *model.EntityMeta, entity any, conflict provider.ConflictClause) (any, error) {
+	c := t.compiler.InsertOnConflict(meta, structToMap(meta, entity), conflict)
+	t.logQuery(c)
+	_, err := t.tx.ExecContext(ctx, c.SQL, c.Params...)
+	return pkFromStruct(meta, entity), err
+}
+
+// TxRunner is the raw-SQL escape hatch exposed by a SQL transaction. A
+// provider.Tx obtained from a SQL provider (e.g. inside
+// DbContext.Transaction) satisfies it, letting callers run hand-written
+// SQL — such as SELECT ... FOR UPDATE — atomically alongside the ORM's
+// tracked operations.
+type TxRunner interface {
+	ExecContext(ctx context.Context, stmt string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, stmt string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, stmt string, args ...any) *sql.Row
+}
+
+var _ TxRunner = (*sqlTx)(nil)
+
+func (t *sqlTx) ExecContext(ctx context.Context, stmt string, args ...any) (sql.Result, error) {
+	return t.tx.ExecContext(ctx, stmt, args...)
+}
+
+func (t *sqlTx) QueryContext(ctx context.Context, stmt string, args ...any) (*sql.Rows, error) {
+	return t.tx.QueryContext(ctx, stmt, args...)
+}
+
+func (t *sqlTx) QueryRowContext(ctx context.Context, stmt string, args ...any) *sql.Row {
+	return t.tx.QueryRowContext(ctx, stmt, args...)
 }
 
 func (t *sqlTx) Update(ctx context.Context, meta *model.EntityMeta, entity any, changed []string) error {
