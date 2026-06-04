@@ -209,6 +209,39 @@ func (s *EntitySet) Delete() (int64, error) {
 	return bd.DeleteWhere(ctx, s.meta, q)
 }
 
+// Update performs a bulk UPDATE against the underlying provider, applying the
+// given assignments to every row matching the current Where chain. Returns the
+// number of rows affected (-1 if the driver cannot report it).
+//
+// Assignments are typically produced by dsl.Set for type safety:
+//
+//	u := &User{}
+//	n, err := db.Set(&User{}).
+//	    Where(dsl.Eq(u, &u.Status, "pending")).
+//	    Update(dsl.Set(u, &u.Status, "active"))
+//
+// An EntitySet with no Where predicates updates every row in the table.
+// OrderBy/Limit/Offset/GroupBy/Having are intentionally ignored, like Delete.
+//
+// This is a direct set-based statement: it does not load, change-track, or run
+// optimistic-concurrency checks on the affected rows, and it does not refresh
+// any already-tracked entities (a tracked row updated here keeps its stale
+// snapshot, so a later SaveChanges on it can overwrite these changes). Returns
+// an error if no assignments are given or the provider does not implement
+// provider.BulkUpdater.
+func (s *EntitySet) Update(sets ...query.Assignment) (int64, error) {
+	if len(sets) == 0 {
+		return 0, fmt.Errorf("Update requires at least one assignment")
+	}
+	bu, ok := s.ctx.provider.(provider.BulkUpdater)
+	if !ok {
+		return 0, fmt.Errorf("provider %q does not support bulk update (BulkUpdater)", s.ctx.provider.Name())
+	}
+	q := s.buildQuery()
+	ctx := s.ctx.opCtx()
+	return bu.UpdateWhere(ctx, s.meta, q, sets)
+}
+
 // Add marks entities for insertion.
 func (s *EntitySet) Add(entities ...any) {
 	for _, e := range entities {

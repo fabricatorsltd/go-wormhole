@@ -76,6 +76,18 @@ func Contains[B any](base *B, fieldPtr *string, val string) Condition {
 	return Condition{Field: fi.Column, Op: query.OpLike, Value: "%" + val + "%"}
 }
 
+// Set builds a column assignment for a bulk Update, resolving the column from
+// the field pointer.
+//
+//	u := &User{}
+//	db.Set(&User{}).
+//	    Where(dsl.Eq(u, &u.Active, false)).
+//	    Update(dsl.Set(u, &u.Active, true))
+func Set[B any, F any](base *B, fieldPtr *F, val F) query.Assignment {
+	fi := resolve(base, fieldPtr)
+	return query.Assignment{Field: fi.Column, Value: val}
+}
+
 // IsNil builds an IS NULL predicate.
 func IsNil[B any, F any](base *B, fieldPtr *F) Condition {
 	fi := resolve(base, fieldPtr)

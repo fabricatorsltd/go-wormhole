@@ -101,6 +101,16 @@ type BulkDeleter interface {
 	DeleteWhere(ctx context.Context, meta *model.EntityMeta, q query.Query) (int64, error)
 }
 
+// BulkUpdater is an optional interface a Provider may implement to update many
+// rows in a single statement, applying the given column assignments to every
+// row matching the query AST's WHERE clause. It does not load, track, or run
+// optimistic-concurrency checks on the affected rows.
+//
+// Returns the number of rows affected (-1 if the backend cannot report it).
+type BulkUpdater interface {
+	UpdateWhere(ctx context.Context, meta *model.EntityMeta, q query.Query, sets []query.Assignment) (int64, error)
+}
+
 // QueryExplainer is an optional interface a Provider may implement to
 // expose compiled queries without executing them. Useful for debugging.
 type QueryExplainer interface {

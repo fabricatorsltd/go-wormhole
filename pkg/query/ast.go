@@ -60,6 +60,14 @@ type Aggregate struct {
 	Alias string // AS alias
 }
 
+// Assignment is a single column assignment in a bulk UPDATE ... SET clause
+// (e.g. status = 'active'). Field is the storage column name. There is no table
+// qualifier: the SET clause of an UPDATE never qualifies its target columns.
+type Assignment struct {
+	Field string
+	Value any
+}
+
 // Query is the root AST produced by the fluent QueryBuilder.
 type Query struct {
 	EntityName string

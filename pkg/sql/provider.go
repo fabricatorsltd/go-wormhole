@@ -436,6 +436,60 @@ func (t *sqlTx) DeleteWhere(ctx context.Context, meta *model.EntityMeta, q query
 	return n, nil
 }
 
+// marshalJSONAssignments returns sets with json-tagged values serialized to
+// their stored string form, mirroring structToMap so the bulk-update path
+// stores json columns the same way Save does.
+func marshalJSONAssignments(meta *model.EntityMeta, sets []query.Assignment) []query.Assignment {
+	out := make([]query.Assignment, len(sets))
+	for i, s := range sets {
+		out[i] = s
+		if f := meta.FieldByColumn(s.Field); f != nil {
+			if _, ok := f.Tags["json"]; ok {
+				if b, err := json.Marshal(s.Value); err == nil {
+					out[i].Value = string(b)
+				}
+			}
+		}
+	}
+	return out
+}
+
+func (p *Provider) UpdateWhere(ctx context.Context, meta *model.EntityMeta, q query.Query, sets []query.Assignment) (int64, error) {
+	sets = marshalJSONAssignments(meta, sets)
+	c := p.compiler.UpdateWhere(meta, q, sets)
+	p.logQuery(c)
+	var affected int64
+	err := p.retryDo(ctx, func() error {
+		res, err := p.db.ExecContext(ctx, c.SQL, c.Params...)
+		if err != nil {
+			return err
+		}
+		n, errN := res.RowsAffected()
+		if errN != nil {
+			affected = -1
+			return nil
+		}
+		affected = n
+		return nil
+	})
+	return affected, err
+}
+
+func (t *sqlTx) UpdateWhere(ctx context.Context, meta *model.EntityMeta, q query.Query, sets []query.Assignment) (int64, error) {
+	sets = marshalJSONAssignments(meta, sets)
+	c := t.compiler.UpdateWhere(meta, q, sets)
+	t.logQuery(c)
+	res, err := t.tx.ExecContext(ctx, c.SQL, c.Params...)
+	if err != nil {
+		return 0, err
+	}
+	n, errN := res.RowsAffected()
+	if errN != nil {
+		return -1, nil
+	}
+	return n, nil
+}
+
 func (t *sqlTx) Find(ctx context.Context, meta *model.EntityMeta, pkValue any, dest any) error {
 	c := t.compiler.FindByPK(meta, pkValue)
 	t.logQuery(c)

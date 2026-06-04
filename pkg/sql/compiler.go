@@ -352,6 +352,36 @@ func (c *Compiler) DeleteWhere(meta *model.EntityMeta, q query.Query) Compiled {
 	return Compiled{SQL: b.String(), Params: params}
 }
 
+// UpdateWhere compiles a bulk UPDATE ... SET ... WHERE ... from a query AST and
+// a list of column assignments. SET columns are emitted first (so their
+// placeholders precede the WHERE parameters), then the WHERE clause from the
+// AST. OrderBy/Limit/Offset/Aggregates/GroupBy/Having are ignored, matching
+// DeleteWhere. An empty Where clause updates every row.
+func (c *Compiler) UpdateWhere(meta *model.EntityMeta, q query.Query, sets []query.Assignment) Compiled {
+	var b strings.Builder
+	var params []any
+
+	b.WriteString("UPDATE ")
+	b.WriteString(c.quote(meta.Name))
+	b.WriteString(" SET ")
+	for i, s := range sets {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(c.quote(s.Field))
+		b.WriteString(" = ")
+		b.WriteString(c.ph(len(params) + 1))
+		params = append(params, s.Value)
+	}
+
+	if q.Where != nil {
+		b.WriteString(" WHERE ")
+		c.compileNode(&b, &params, q.Where)
+	}
+
+	return Compiled{SQL: b.String(), Params: params}
+}
+
 // FindByPK compiles a SELECT … WHERE pk = ? for a single entity.
 func (c *Compiler) FindByPK(meta *model.EntityMeta, pkValue any) Compiled {
 	var cols []string
