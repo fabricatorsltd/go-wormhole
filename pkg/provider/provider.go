@@ -67,6 +67,12 @@ type Tx interface {
 // (SQL DO NOTHING); otherwise the listed columns are overwritten from the
 // proposed row (SQL DO UPDATE SET col = EXCLUDED.col). Update columns must
 // be among the columns actually written by the insert.
+//
+// Dialect note: on MySQL the conflict target is not honoured. MySQL's
+// ON DUPLICATE KEY UPDATE fires on any unique or primary-key collision, so
+// Columns only selects the no-op column for the leave-untouched case; it does
+// not scope which index triggers the upsert. PostgreSQL, SQLite, and SQL Server
+// match on the listed Columns as expected.
 type ConflictClause struct {
 	Columns []string
 	Update  []string

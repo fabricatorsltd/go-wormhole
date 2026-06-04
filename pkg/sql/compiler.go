@@ -28,8 +28,31 @@ type Compiler struct {
 	// BracketQuote uses [brackets] instead of "double quotes" (MSSQL).
 	BracketQuote bool
 
+	// Backtick uses `backticks` for identifiers (MySQL). It also serves as
+	// MySQL's dialect marker: MySQL shares the "?" placeholder with SQLite, so
+	// the quoting flag is what tells the two apart when emitting dialect SQL.
+	Backtick bool
+
 	// UseTOP uses SELECT TOP N instead of LIMIT N (MSSQL).
 	UseTOP bool
+}
+
+// dialect names the SQL dialect this compiler targets, derived from the
+// placeholder/quoting flags. It is the single place that maps the low-level
+// flags to a dialect identity, used where the emitted SQL diverges by backend
+// (e.g. upsert). Postgres is also implied by Numbered at provider.go's RETURNING
+// checks; the same flag convention is centralized here.
+func (c *Compiler) dialect() string {
+	switch {
+	case c.AtPrefixed:
+		return "mssql"
+	case c.Backtick:
+		return "mysql"
+	case c.Numbered:
+		return "postgres"
+	default:
+		return "sqlite"
+	}
 }
 
 // Select compiles a query.Query into a SELECT statement.
@@ -267,12 +290,30 @@ func insertColumnKey(meta *model.EntityMeta, values map[string]any) string {
 	return strings.Join(names, ",")
 }
 
-// InsertOnConflict compiles an INSERT ... ON CONFLICT statement, reusing
-// Insert's column/value/default handling and appending the conflict
-// resolution. An empty conflict.Update emits DO NOTHING; otherwise it emits
-// DO UPDATE SET col = EXCLUDED.col for each listed column. The EXCLUDED
-// pseudo-row is understood by both PostgreSQL and SQLite.
+// InsertOnConflict compiles an insert-or-update for the compiler's dialect. An
+// empty conflict.Update means "leave the existing row untouched"; otherwise the
+// listed columns are overwritten from the proposed row.
+//
+//   - PostgreSQL / SQLite: INSERT ... ON CONFLICT (cols) DO NOTHING | DO UPDATE.
+//   - MySQL:               INSERT ... ON DUPLICATE KEY UPDATE.
+//   - SQL Server:          MERGE ... WHEN MATCHED / WHEN NOT MATCHED.
+//
+// Note the MySQL divergence documented on provider.ConflictClause: MySQL fires
+// on any unique/PK index and ignores the conflict target columns.
 func (c *Compiler) InsertOnConflict(meta *model.EntityMeta, values map[string]any, conflict provider.ConflictClause) Compiled {
+	switch c.dialect() {
+	case "mysql":
+		return c.insertOnDuplicateKey(meta, values, conflict)
+	case "mssql":
+		return c.mergeUpsert(meta, values, conflict)
+	default:
+		return c.insertOnConflictStandard(meta, values, conflict)
+	}
+}
+
+// insertOnConflictStandard emits the PostgreSQL / SQLite ON CONFLICT form,
+// referencing the proposed row through the EXCLUDED pseudo-table.
+func (c *Compiler) insertOnConflictStandard(meta *model.EntityMeta, values map[string]any, conflict provider.ConflictClause) Compiled {
 	base := c.Insert(meta, values)
 
 	var b strings.Builder
@@ -302,6 +343,144 @@ func (c *Compiler) InsertOnConflict(meta *model.EntityMeta, values map[string]an
 	}
 
 	return Compiled{SQL: b.String(), Params: base.Params}
+}
+
+// insertOnDuplicateKey emits the MySQL ON DUPLICATE KEY UPDATE form. MySQL
+// triggers on any unique or primary-key collision and cannot target specific
+// conflict columns, so conflict.Columns is used only to pick a no-op column for
+// the leave-untouched case. Updated columns read the proposed value through the
+// VALUES() function, which is kept (over the 8.0.19+ aliased form) for
+// compatibility with MySQL 5.7 and early 8.0.
+func (c *Compiler) insertOnDuplicateKey(meta *model.EntityMeta, values map[string]any, conflict provider.ConflictClause) Compiled {
+	base := c.Insert(meta, values)
+
+	var b strings.Builder
+	b.WriteString(base.SQL)
+	b.WriteString(" ON DUPLICATE KEY UPDATE ")
+
+	if len(conflict.Update) == 0 {
+		// MySQL has no DO NOTHING; assign a key column to itself as a no-op.
+		q := c.quote(c.conflictAnchor(meta, conflict))
+		b.WriteString(q)
+		b.WriteString(" = ")
+		b.WriteString(q)
+	} else {
+		for i, col := range conflict.Update {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			q := c.quote(col)
+			b.WriteString(q)
+			b.WriteString(" = VALUES(")
+			b.WriteString(q)
+			b.WriteString(")")
+		}
+	}
+
+	return Compiled{SQL: b.String(), Params: base.Params}
+}
+
+// mergeUpsert emits the SQL Server MERGE form. WITH (HOLDLOCK) takes a range
+// lock on the target so two concurrent merges cannot both fall through to
+// WHEN NOT MATCHED and double-insert; without it MERGE is not a safe upsert.
+// An empty conflict.Update omits the WHEN MATCHED clause (leave-untouched).
+//
+// Unlike Postgres EXCLUDED and MySQL VALUES(), the [src] derived table only
+// exposes the columns it lists, so it must carry every column referenced by the
+// ON clause or the UPDATE SET, not just the inserted ones. The insert column
+// set still honours default-dropping (insertColumns), so WHEN NOT MATCHED lets
+// the DB DEFAULT apply; the source row is the union of insert, match, and update
+// columns so no [src].col is ever unbound.
+func (c *Compiler) mergeUpsert(meta *model.EntityMeta, values map[string]any, conflict provider.ConflictClause) Compiled {
+	insertFields := insertColumns(meta, values)
+
+	match := conflict.Columns
+	if len(match) == 0 {
+		match = []string{c.conflictAnchor(meta, conflict)}
+	}
+
+	// Source columns: insert columns first, then any match/update column not
+	// already present, so every [src].col below resolves.
+	srcFields := append([]model.FieldMeta(nil), insertFields...)
+	seen := make(map[string]bool, len(srcFields))
+	for _, f := range srcFields {
+		seen[f.Column] = true
+	}
+	addCol := func(col string) {
+		if col == "" || seen[col] {
+			return
+		}
+		if f := meta.FieldByColumn(col); f != nil {
+			srcFields = append(srcFields, *f)
+			seen[col] = true
+		}
+	}
+	for _, col := range match {
+		addCol(col)
+	}
+	for _, col := range conflict.Update {
+		addCol(col)
+	}
+
+	params := make([]any, len(srcFields))
+	placeholders := make([]string, len(srcFields))
+	srcDecl := make([]string, len(srcFields))
+	for i, f := range srcFields {
+		params[i] = values[f.FieldName]
+		placeholders[i] = c.ph(i + 1)
+		srcDecl[i] = c.quote(f.Column)
+	}
+
+	insertCols := make([]string, len(insertFields))
+	insertVals := make([]string, len(insertFields))
+	for i, f := range insertFields {
+		insertCols[i] = c.quote(f.Column)
+		insertVals[i] = "[src]." + c.quote(f.Column)
+	}
+
+	on := make([]string, len(match))
+	for i, col := range match {
+		q := c.quote(col)
+		on[i] = "[tgt]." + q + " = [src]." + q
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "MERGE INTO %s WITH (HOLDLOCK) AS [tgt] USING (VALUES (%s)) AS [src] (%s) ON %s",
+		c.quote(meta.Name),
+		strings.Join(placeholders, ", "),
+		strings.Join(srcDecl, ", "),
+		strings.Join(on, " AND "),
+	)
+	if len(conflict.Update) > 0 {
+		sets := make([]string, len(conflict.Update))
+		for i, col := range conflict.Update {
+			q := c.quote(col)
+			sets[i] = q + " = [src]." + q
+		}
+		fmt.Fprintf(&b, " WHEN MATCHED THEN UPDATE SET %s", strings.Join(sets, ", "))
+	}
+	fmt.Fprintf(&b, " WHEN NOT MATCHED THEN INSERT (%s) VALUES (%s);",
+		strings.Join(insertCols, ", "),
+		strings.Join(insertVals, ", "),
+	)
+
+	return Compiled{SQL: b.String(), Params: params}
+}
+
+// conflictAnchor returns a single column to anchor a no-op update or a missing
+// merge match: the first declared conflict column, falling back to the primary
+// key.
+func (c *Compiler) conflictAnchor(meta *model.EntityMeta, conflict provider.ConflictClause) string {
+	if len(conflict.Columns) > 0 {
+		return conflict.Columns[0]
+	}
+	if meta.PrimaryKey != nil {
+		return meta.PrimaryKey.Column
+	}
+	if len(meta.Fields) > 0 {
+		return meta.Fields[0].Column
+	}
+	return ""
 }
 
 // isZeroValue reports whether v is the Go zero-value for its type.
@@ -719,6 +898,9 @@ func (c *Compiler) ph(n int) string {
 func (c *Compiler) quote(s string) string {
 	if c.BracketQuote {
 		return "[" + s + "]"
+	}
+	if c.Backtick {
+		return "`" + s + "`"
 	}
 	return `"` + s + `"`
 }

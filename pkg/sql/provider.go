@@ -38,6 +38,22 @@ func WithNumberedParams() Option {
 	return func(p *Provider) { p.compiler.Numbered = true }
 }
 
+// WithMySQLDialect targets MySQL: backtick-quoted identifiers and the
+// ON DUPLICATE KEY UPDATE upsert form. Placeholders stay "?".
+func WithMySQLDialect() Option {
+	return func(p *Provider) { p.compiler.Backtick = true }
+}
+
+// WithSQLServerDialect targets SQL Server: @p1 placeholders, [bracket]-quoted
+// identifiers, SELECT TOP, and the MERGE upsert form.
+func WithSQLServerDialect() Option {
+	return func(p *Provider) {
+		p.compiler.AtPrefixed = true
+		p.compiler.BracketQuote = true
+		p.compiler.UseTOP = true
+	}
+}
+
 // WithName overrides the provider name (default: "sql").
 func WithName(n string) Option {
 	return func(p *Provider) { p.name = n }
