@@ -1,11 +1,27 @@
 package migrations
 
 import (
+	"fmt"
 	"reflect"
 	"sort"
 
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
 )
+
+// ValidateModels reports the first reason a set of models cannot yet be turned
+// into a migration. Composite (multi-column) primary keys are not supported by
+// the DDL generator, which renders one inline PRIMARY KEY per column; emitting a
+// table for such an entity would produce invalid SQL, so it is rejected rather
+// than generated wrong. Declare these tables by hand for now. Runtime CRUD on
+// composite-key entities is supported by the SQL providers.
+func ValidateModels(targets []*model.EntityMeta) error {
+	for _, m := range targets {
+		if len(m.PrimaryKeys) > 1 {
+			return fmt.Errorf("entity %q has a composite primary key, which migration generation does not yet support; define the table manually", m.Name)
+		}
+	}
+	return nil
+}
 
 // ComputeDiff compares target models (from Go structs) against the
 // current database schema and returns the list of DDL operations

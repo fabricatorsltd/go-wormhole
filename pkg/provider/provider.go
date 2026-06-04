@@ -117,6 +117,15 @@ type VersionedDeleter interface {
 	DeleteVersioned(ctx context.Context, meta *model.EntityMeta, pkValue, version any) (int64, error)
 }
 
+// CompositeKeyer marks a provider that supports entities with composite
+// (multi-column) primary keys. Composite keys are a relational concept; the SQL
+// providers implement this, while document and key-value backends do not.
+// DbContext rejects a composite-PK entity on a provider that lacks it rather
+// than silently keying on the first column.
+type CompositeKeyer interface {
+	CompositeKeysSupported() bool
+}
+
 // BatchInserter is an optional interface a Tx may implement to persist several
 // same-type entities in as few multi-row INSERT statements as possible.
 // DbContext.flush uses it only for entities with client-assigned primary keys,

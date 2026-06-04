@@ -3,6 +3,7 @@ package tracker
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
 	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
@@ -165,15 +166,31 @@ func (t *Tracker) entityKey(meta *model.EntityMeta, entity any) string {
 		val = val.Elem()
 	}
 
-	if meta.PrimaryKey != nil {
-		pk := val.FieldByName(meta.PrimaryKey.FieldName).Interface()
-		// For auto-increment PKs with zero value (not yet assigned),
-		// use pointer address to avoid collisions between new entities.
-		if meta.PrimaryKey.AutoIncr && reflect.ValueOf(pk).IsZero() {
+	keys := meta.PrimaryKeys
+	if len(keys) == 0 && meta.PrimaryKey != nil {
+		keys = []*model.FieldMeta{meta.PrimaryKey}
+	}
+
+	// For a single auto-increment PK not yet assigned, key on the pointer
+	// address to avoid collisions between new (zero-id) entities.
+	if len(keys) == 1 && keys[0].AutoIncr {
+		pk := val.FieldByName(keys[0].FieldName).Interface()
+		if reflect.ValueOf(pk).IsZero() {
 			return fmt.Sprintf("%s#ptr(%d)", meta.Name, val.UnsafeAddr())
 		}
-		return fmt.Sprintf("%s#%v", meta.Name, pk)
 	}
+
+	if len(keys) > 0 {
+		// Components are joined with "|"; for string keys containing "|" this
+		// could in theory collide, which is acceptable for the integer-key
+		// common case (EF Core uses a structured key object to avoid it).
+		parts := make([]string, len(keys))
+		for i, k := range keys {
+			parts[i] = fmt.Sprintf("%v", val.FieldByName(k.FieldName).Interface())
+		}
+		return meta.Name + "#" + strings.Join(parts, "|")
+	}
+
 	// fallback: use pointer address
 	return fmt.Sprintf("%s#ptr(%d)", meta.Name, val.UnsafeAddr())
 }

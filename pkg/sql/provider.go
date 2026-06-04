@@ -108,6 +108,10 @@ func (p *Provider) logQuery(c Compiled) {
 
 func (p *Provider) Name() string { return p.name }
 
+// CompositeKeysSupported reports that the SQL providers can key entities on a
+// composite (multi-column) primary key. Implements provider.CompositeKeyer.
+func (p *Provider) CompositeKeysSupported() bool { return true }
+
 // SQLDB exposes the underlying *sql.DB for advanced operations.
 func (p *Provider) SQLDB() *sql.DB { return p.db }
 
@@ -672,15 +676,29 @@ func scanTarget(field reflect.Value, fm *model.FieldMeta) any {
 	return addr
 }
 
+// pkFromStruct returns the entity's primary-key value: a scalar for a
+// single-column key, or a []any tuple (in column order) for a composite key.
+// The composite form is understood by the compiler's writeKeyWhere.
 func pkFromStruct(meta *model.EntityMeta, entity any) any {
-	if meta.PrimaryKey == nil {
-		return nil
-	}
 	val := reflect.ValueOf(entity)
 	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
 	}
-	return val.FieldByName(meta.PrimaryKey.FieldName).Interface()
+	keys := meta.PrimaryKeys
+	if len(keys) == 0 {
+		if meta.PrimaryKey == nil {
+			return nil
+		}
+		keys = []*model.FieldMeta{meta.PrimaryKey}
+	}
+	if len(keys) == 1 {
+		return val.FieldByName(keys[0].FieldName).Interface()
+	}
+	vals := make([]any, len(keys))
+	for i, k := range keys {
+		vals[i] = val.FieldByName(k.FieldName).Interface()
+	}
+	return vals
 }
 
 // versionConflict reports the optimistic-concurrency outcome of a versioned

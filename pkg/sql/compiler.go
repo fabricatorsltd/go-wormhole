@@ -412,9 +412,11 @@ func (c *Compiler) insertOnDuplicateKey(meta *model.EntityMeta, values map[strin
 func (c *Compiler) mergeUpsert(meta *model.EntityMeta, values map[string]any, conflict provider.ConflictClause) Compiled {
 	insertFields := insertColumns(meta, values)
 
+	// With no explicit conflict target, match on the full primary key (every
+	// column for a composite key), not just the first.
 	match := conflict.Columns
 	if len(match) == 0 {
-		match = []string{c.conflictAnchor(meta, conflict)}
+		match = c.keyColumns(meta)
 	}
 
 	// Source columns: insert columns first, then any match/update column not
@@ -555,15 +557,8 @@ func (c *Compiler) Update(meta *model.EntityMeta, values map[string]any, changed
 		return Compiled{}
 	}
 
-	pkCol := "id"
-	if meta.PrimaryKey != nil {
-		pkCol = meta.PrimaryKey.Column
-	}
-
 	var where strings.Builder
-	where.WriteString(fmt.Sprintf("%s = %s", c.quote(pkCol), c.ph(idx)))
-	params = append(params, pkValue)
-	idx++
+	idx = c.writeKeyWhere(&where, &params, meta, pkValue, idx)
 	if meta.Version != nil {
 		where.WriteString(fmt.Sprintf(" AND %s = %s", c.quote(meta.Version.Column), c.ph(idx)))
 		params = append(params, values[meta.Version.FieldName])
@@ -579,16 +574,62 @@ func (c *Compiler) Update(meta *model.EntityMeta, values map[string]any, changed
 
 // Delete compiles a DELETE by primary key.
 func (c *Compiler) Delete(meta *model.EntityMeta, pkValue any) Compiled {
-	pkCol := "id"
-	if meta.PrimaryKey != nil {
-		pkCol = meta.PrimaryKey.Column
+	var w strings.Builder
+	var params []any
+	c.writeKeyWhere(&w, &params, meta, pkValue, 1)
+	sql := fmt.Sprintf("DELETE FROM %s WHERE %s", c.quote(meta.Name), w.String())
+	return Compiled{SQL: sql, Params: params}
+}
+
+// keyColumns returns the entity's primary-key columns in declaration order,
+// falling back to the singular PrimaryKey, then to "id".
+func (c *Compiler) keyColumns(meta *model.EntityMeta) []string {
+	if len(meta.PrimaryKeys) > 0 {
+		cols := make([]string, len(meta.PrimaryKeys))
+		for i, k := range meta.PrimaryKeys {
+			cols[i] = k.Column
+		}
+		return cols
 	}
-	sql := fmt.Sprintf("DELETE FROM %s WHERE %s = %s",
-		c.quote(meta.Name),
-		c.quote(pkCol),
-		c.ph(1),
-	)
-	return Compiled{SQL: sql, Params: []any{pkValue}}
+	if meta.PrimaryKey != nil {
+		return []string{meta.PrimaryKey.Column}
+	}
+	return []string{"id"}
+}
+
+// keyValues unpacks a primary-key argument into its component values: a []any is
+// a composite key tuple, anything else is a single scalar key. A single-column
+// key whose Go value is itself a []any (an exotic JSON/array PK) would be
+// misread as composite; such a column should not be a primary key.
+func keyValues(pkValue any) []any {
+	if vs, ok := pkValue.([]any); ok {
+		return vs
+	}
+	return []any{pkValue}
+}
+
+// writeKeyWhere appends "col1 = ?i AND col2 = ?i+1 ..." for the primary-key
+// columns, starting at placeholder index startIdx, and appends the matching
+// values (in column order) to params. It returns the next free placeholder
+// index. For a single-column key this emits exactly the old single-clause WHERE.
+func (c *Compiler) writeKeyWhere(w *strings.Builder, params *[]any, meta *model.EntityMeta, pkValue any, startIdx int) int {
+	cols := c.keyColumns(meta)
+	vals := keyValues(pkValue)
+	for i, col := range cols {
+		if i > 0 {
+			w.WriteString(" AND ")
+		}
+		w.WriteString(c.quote(col))
+		w.WriteString(" = ")
+		w.WriteString(c.ph(startIdx))
+		if i < len(vals) {
+			*params = append(*params, vals[i])
+		} else {
+			*params = append(*params, nil)
+		}
+		startIdx++
+	}
+	return startIdx
 }
 
 // DeleteVersioned compiles a DELETE guarded on the optimistic-concurrency
@@ -598,18 +639,16 @@ func (c *Compiler) DeleteVersioned(meta *model.EntityMeta, pkValue, version any)
 	if meta.Version == nil {
 		return c.Delete(meta, pkValue)
 	}
-	pkCol := "id"
-	if meta.PrimaryKey != nil {
-		pkCol = meta.PrimaryKey.Column
-	}
-	sql := fmt.Sprintf("DELETE FROM %s WHERE %s = %s AND %s = %s",
-		c.quote(meta.Name),
-		c.quote(pkCol),
-		c.ph(1),
-		c.quote(meta.Version.Column),
-		c.ph(2),
-	)
-	return Compiled{SQL: sql, Params: []any{pkValue, version}}
+	var w strings.Builder
+	var params []any
+	idx := c.writeKeyWhere(&w, &params, meta, pkValue, 1)
+	w.WriteString(" AND ")
+	w.WriteString(c.quote(meta.Version.Column))
+	w.WriteString(" = ")
+	w.WriteString(c.ph(idx))
+	params = append(params, version)
+	sql := fmt.Sprintf("DELETE FROM %s WHERE %s", c.quote(meta.Name), w.String())
+	return Compiled{SQL: sql, Params: params}
 }
 
 // DeleteWhere compiles a bulk DELETE … WHERE … from a query AST.
@@ -668,12 +707,8 @@ func (c *Compiler) FindByPK(meta *model.EntityMeta, pkValue any) Compiled {
 		cols = append(cols, c.quote(f.Column))
 	}
 
-	pkCol := "id"
-	if meta.PrimaryKey != nil {
-		pkCol = meta.PrimaryKey.Column
-	}
-
 	var b strings.Builder
+	var params []any
 	b.WriteString("SELECT ")
 	if c.UseTOP {
 		b.WriteString("TOP 1 ")
@@ -682,14 +717,12 @@ func (c *Compiler) FindByPK(meta *model.EntityMeta, pkValue any) Compiled {
 	b.WriteString(" FROM ")
 	b.WriteString(c.quote(meta.Name))
 	b.WriteString(" WHERE ")
-	b.WriteString(c.quote(pkCol))
-	b.WriteString(" = ")
-	b.WriteString(c.ph(1))
+	c.writeKeyWhere(&b, &params, meta, pkValue, 1)
 	if !c.UseTOP {
 		b.WriteString(" LIMIT 1")
 	}
 
-	return Compiled{SQL: b.String(), Params: []any{pkValue}}
+	return Compiled{SQL: b.String(), Params: params}
 }
 
 // --- Join support ---

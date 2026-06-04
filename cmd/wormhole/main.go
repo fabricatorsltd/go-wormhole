@@ -127,6 +127,10 @@ func cmdAdd(name string) {
 		fatal("no models with `db` tags found in the current directory")
 	}
 
+	if err := migrations.ValidateModels(models); err != nil {
+		fatalf("%v", err)
+	}
+
 	snapPath := filepath.Join(dir, snapshotFile)
 	current, err := migrations.LoadSnapshot(snapPath)
 	if err != nil {

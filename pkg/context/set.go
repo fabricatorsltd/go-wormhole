@@ -129,13 +129,21 @@ func (s *EntitySet) activeFilters() []query.Node {
 // When query filters are registered for the entity, Find applies them too, so
 // a primary-key lookup cannot reach a row excluded by a filter (e.g. another
 // tenant's row, or a soft-deleted one). Use IgnoreFilters to bypass.
-func (s *EntitySet) Find(pk any) error {
+func (s *EntitySet) Find(pk ...any) error {
+	if err := s.ctx.requireKeySupport(s.meta); err != nil {
+		return err
+	}
+	if n := len(keyFields(s.meta)); n > 0 && len(pk) != n {
+		return fmt.Errorf("Find: %q has %d primary key column(s), got %d key value(s)", s.meta.Name, n, len(pk))
+	}
+
 	ctx := s.ctx.opCtx()
+	key := keyArg(pk)
 
 	filters := s.activeFilters()
 	if len(filters) == 0 {
 		err := s.ctx.withReadResilience(ctx, func() error {
-			return s.ctx.provider.Find(ctx, s.meta, pk, s.dest)
+			return s.ctx.provider.Find(ctx, s.meta, key, s.dest)
 		})
 		if err != nil {
 			return err
@@ -148,17 +156,31 @@ func (s *EntitySet) Find(pk any) error {
 	return s.findFiltered(ctx, pk, filters)
 }
 
+// keyArg packs Find's key values into the provider argument: a scalar for a
+// single-column key, the []any tuple for a composite key.
+func keyArg(pk []any) any {
+	if len(pk) == 1 {
+		return pk[0]
+	}
+	return pk
+}
+
 // findFiltered loads a single entity by primary key through the query path so
 // the registered filters apply. Returns sql.ErrNoRows when no row matches both
 // the key and the filters, matching the keyed-lookup Find.
-func (s *EntitySet) findFiltered(ctx stdctx.Context, pk any, filters []query.Node) error {
-	pkCol := "id"
-	if s.meta.PrimaryKey != nil {
-		pkCol = s.meta.PrimaryKey.Column
+func (s *EntitySet) findFiltered(ctx stdctx.Context, pk []any, filters []query.Node) error {
+	keys := keyFields(s.meta)
+	preds := make([]query.Node, 0, len(keys)+len(filters))
+	if len(keys) == 0 && len(pk) > 0 {
+		// No declared PK: match on "id" by convention, mirroring the keyed path.
+		preds = append(preds, query.Predicate{Field: "id", Op: query.OpEq, Value: pk[0]})
 	}
+	for i, k := range keys {
+		preds = append(preds, query.Predicate{Field: k.Column, Op: query.OpEq, Value: pk[i]})
+	}
+	preds = append(preds, filters...)
 
 	b := query.From(s.meta.Name)
-	preds := append([]query.Node{query.Predicate{Field: pkCol, Op: query.OpEq, Value: pk}}, filters...)
 	b.Filter(preds...)
 	b.Limit(1)
 	q := b.Build()
@@ -255,8 +277,10 @@ func (s *EntitySet) projectedColumns() []string {
 		cols = append(cols, col)
 		have[col] = true
 	}
-	if (s.tracking == trackOn || len(s.includes) > 0) && s.meta.PrimaryKey != nil {
-		add(s.meta.PrimaryKey.Column)
+	if s.tracking == trackOn || len(s.includes) > 0 {
+		for _, k := range keyFields(s.meta) {
+			add(k.Column)
+		}
 	}
 	for _, name := range s.includes {
 		if rel := s.meta.Relation(name); rel != nil {

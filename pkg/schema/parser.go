@@ -105,7 +105,12 @@ func ParseType(t reflect.Type) *model.EntityMeta {
 
 		meta.Fields = append(meta.Fields, field)
 		if field.PrimaryKey {
-			meta.PrimaryKey = &meta.Fields[len(meta.Fields)-1]
+			pk := &meta.Fields[len(meta.Fields)-1]
+			meta.PrimaryKeys = append(meta.PrimaryKeys, pk)
+			// PrimaryKey is the singular shortcut: the first declared key.
+			if meta.PrimaryKey == nil {
+				meta.PrimaryKey = pk
+			}
 		}
 		if _, ok := field.Tags["version"]; ok && isIntegerKind(sf.Type.Kind()) {
 			meta.Version = &meta.Fields[len(meta.Fields)-1]

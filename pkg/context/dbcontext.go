@@ -291,6 +291,17 @@ func (c *DbContext) SaveChanges(ctx stdctx.Context) error {
 // flush executes the pending operations inside a transaction,
 // optionally wrapped in a retry policy and circuit breaker.
 func (c *DbContext) flush(ctx stdctx.Context, pending []*model.Entry) error {
+	// Reject composite-PK entities on a provider that cannot key on them before
+	// opening a transaction.
+	for _, e := range pending {
+		if err := c.requireKeySupport(e.Meta); err != nil {
+			return err
+		}
+		if err := c.requireRelationKeySupport(e.Meta); err != nil {
+			return err
+		}
+	}
+
 	// Order inserts so that a new parent is written before any new child that
 	// references it, and fix up foreign-key values from the in-memory object
 	// graph. With no relationships this is the original order, untouched.
@@ -472,12 +483,63 @@ func assignAutoIncrPK(e *model.Entry, id any) {
 	}
 }
 
+// pkValue returns the entity's loaded primary key from its snapshot: a scalar
+// for a single-column key, or a []any tuple (in column order) for a composite
+// key. The composite form is understood by the compiler's key WHERE builder.
 func (c *DbContext) pkValue(e *model.Entry) any {
-	if e.Meta.PrimaryKey == nil {
+	keys := keyFields(e.Meta)
+	if len(keys) == 0 {
 		return nil
 	}
-	if snap, ok := e.Snapshot[e.Meta.PrimaryKey.FieldName]; ok {
-		return snap
+	if len(keys) == 1 {
+		return e.Snapshot[keys[0].FieldName]
+	}
+	vals := make([]any, len(keys))
+	for i, k := range keys {
+		vals[i] = e.Snapshot[k.FieldName]
+	}
+	return vals
+}
+
+// keyFields returns the entity's primary-key fields, preferring the composite
+// PrimaryKeys list and falling back to the singular PrimaryKey shortcut.
+func keyFields(meta *model.EntityMeta) []*model.FieldMeta {
+	if len(meta.PrimaryKeys) > 0 {
+		return meta.PrimaryKeys
+	}
+	if meta.PrimaryKey != nil {
+		return []*model.FieldMeta{meta.PrimaryKey}
+	}
+	return nil
+}
+
+// requireKeySupport rejects a composite-PK entity on a provider that cannot key
+// on multiple columns, so it fails with a clear error instead of silently
+// matching on the first column.
+func (c *DbContext) requireKeySupport(meta *model.EntityMeta) error {
+	if len(keyFields(meta)) <= 1 {
+		return nil
+	}
+	if ck, ok := c.provider.(provider.CompositeKeyer); ok && ck.CompositeKeysSupported() {
+		return nil
+	}
+	return fmt.Errorf("entity %q has a composite primary key, which provider %q does not support", meta.Name, c.provider.Name())
+}
+
+// requireRelationKeySupport rejects a relation that targets a composite-PK
+// entity. Relation foreign keys are single columns (Relation.LocalKey /
+// ForeignKey), so a composite target cannot yet be linked without silently
+// writing only its first key column. Composite-PK entities support standalone
+// CRUD; being the target of a navigation is a later slice.
+func (c *DbContext) requireRelationKeySupport(meta *model.EntityMeta) error {
+	for _, rel := range meta.Relations {
+		if rel.Target == nil {
+			continue
+		}
+		target := schema.ParseType(rel.Target)
+		if len(keyFields(target)) > 1 {
+			return fmt.Errorf("entity %q relation %q targets %q, which has a composite primary key; relations to composite-key entities are not yet supported", meta.Name, rel.Field, target.Name)
+		}
 	}
 	return nil
 }

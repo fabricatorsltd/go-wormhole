@@ -2,23 +2,33 @@ package context
 
 import (
 	stdctx "context"
+	"fmt"
 	"iter"
 
 	"github.com/fabricatorsltd/go-wormhole/pkg/query"
 	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
 )
 
-// Find retrieves a single entity of type T by primary key.
-// The result is automatically tracked as Unchanged.
+// Find retrieves a single entity of type T by primary key. Pass one value per
+// primary-key column (one for a single key, several for a composite key). The
+// result is automatically tracked as Unchanged.
 //
 //	u, err := context.Find[User](ctx, dbCtx, 42)
-func Find[T any](ctx stdctx.Context, c *DbContext, pk any) (*T, error) {
+//	l, err := context.Find[OrderLine](ctx, dbCtx, orderID, lineNo)
+func Find[T any](ctx stdctx.Context, c *DbContext, pk ...any) (*T, error) {
 	var zero T
 	meta := schema.Parse(&zero)
 
+	if err := c.requireKeySupport(meta); err != nil {
+		return nil, err
+	}
+	if n := len(keyFields(meta)); n > 0 && len(pk) != n {
+		return nil, fmt.Errorf("Find: %q has %d primary key column(s), got %d key value(s)", meta.Name, n, len(pk))
+	}
+
 	dest := new(T)
 	err := c.withReadResilience(ctx, func() error {
-		return c.provider.Find(ctx, meta, pk, dest)
+		return c.provider.Find(ctx, meta, keyArg(pk), dest)
 	})
 	if err != nil {
 		return nil, err

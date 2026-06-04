@@ -26,6 +26,9 @@ func (s *EntitySet) loadInclude(ctx stdctx.Context, name string) error {
 	if rel == nil {
 		return fmt.Errorf("Include(%q): %q has no relation %q", name, s.meta.Name, name)
 	}
+	if rel.Target != nil && len(keyFields(schema.ParseType(rel.Target))) > 1 {
+		return fmt.Errorf("Include(%q): %q has a composite primary key; relations to composite-key entities are not yet supported", name, name)
+	}
 
 	parents := derefSlice(s.dest)
 	if !parents.IsValid() || parents.Len() == 0 {
