@@ -17,6 +17,11 @@ func (MSSQLDialect) AutoIncrementClause() string     { return "IDENTITY(1,1)" }
 func (MSSQLDialect) AutoIncrementType(string) string { return "" }
 func (MSSQLDialect) SupportsIfNotExists() bool       { return false }
 
+// DropIndexSQL renders T-SQL's table-scoped DROP INDEX (IF EXISTS, SQL Server 2016+).
+func (d MSSQLDialect) DropIndexSQL(name, table string) string {
+	return fmt.Sprintf("DROP INDEX IF EXISTS %s ON %s", d.QuoteIdent(name), d.QuoteIdent(table))
+}
+
 // AddColumnKeyword returns the T-SQL keyword for adding a column.
 // MSSQL uses ALTER TABLE t ADD col ... (no COLUMN keyword).
 func (MSSQLDialect) AddColumnKeyword() string { return "ADD" }

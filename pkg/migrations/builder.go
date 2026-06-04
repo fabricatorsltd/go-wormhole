@@ -174,6 +174,12 @@ func (b *SchemaBuilder) renderOp(op MigrationOp) string {
 		return fmt.Sprintf("CREATE %sINDEX %s%s ON %s (%s)",
 			u, ifne, q(o.Name), q(o.Table), strings.Join(cols, ", "))
 	case DropIndexOp:
+		// MySQL/MSSQL require the table; Postgres/SQLite drop by index name.
+		if d, ok := b.dialect.(interface {
+			DropIndexSQL(name, table string) string
+		}); ok && o.Table != "" {
+			return d.DropIndexSQL(o.Name, o.Table)
+		}
 		return fmt.Sprintf("DROP INDEX IF EXISTS %s", q(o.Name))
 	case RawSQLOp:
 		// Pass-through: trim the trailing semicolon (the runner adds

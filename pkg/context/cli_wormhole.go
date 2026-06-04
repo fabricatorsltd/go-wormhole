@@ -142,6 +142,10 @@ func cliResolveDialect(name string) migrations.Dialect {
 	}
 }
 
+// snapshotFileName is the model snapshot stored in the migrations directory,
+// diffed against on the next `migrations add`.
+const snapshotFileName = "schema_snapshot.json"
+
 func cliMigrationsAdd(name string) {
 	dir := cliDir()
 
@@ -156,9 +160,15 @@ func cliMigrationsAdd(name string) {
 		os.Exit(1)
 	}
 
-	// Diff against the schema the already-applied migrations describe, so a
-	// follow-up `add` emits incremental ALTERs instead of recreating tables.
-	current := migrations.RebuildFromMigrations(migrations.Registered())
+	// Diff the model against the saved snapshot (EF Core's ModelSnapshot model):
+	// the snapshot is derived from the model, so it has no raw-SQL blind spot and
+	// no dependency on every prior migration being registered.
+	snapshotPath := filepath.Join(dir, snapshotFileName)
+	current, err := migrations.LoadSnapshot(snapshotPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading model snapshot: %v\n", err)
+		os.Exit(1)
+	}
 	ops := migrations.ComputeDiff(models, current)
 
 	if len(ops) == 0 {
@@ -179,6 +189,12 @@ func cliMigrationsAdd(name string) {
 	goPath := filepath.Join(dir, migrations.MigrationFileName(name))
 	if err := os.WriteFile(goPath, []byte(goContent), 0o644); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing migration file: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Advance the snapshot to the new model state so the next add diffs against it.
+	if err := migrations.WriteSnapshot(snapshotPath, migrations.MetaToSnapshot(models)); err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing model snapshot: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -228,21 +244,20 @@ func cliMigrationsScript(name, dialectName string) {
 	dir := cliDir()
 	dialect := cliResolveDialect(dialectName)
 
-	models, err := discovery.DiscoverModels(".")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error discovering models: %v\n", err)
-		os.Exit(1)
+	// Like EF Core's `migrations script`, render the existing migrations as SQL
+	// for the chosen dialect, rather than diffing the model.
+	regs := migrations.Registered()
+	if len(regs) == 0 {
+		fmt.Println("No migrations to script. Run 'migrations add' first.")
+		return
 	}
-
-	current := migrations.RebuildFromMigrations(migrations.Registered())
-	ops := migrations.ComputeDiff(models, current)
 
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating directory: %v\n", err)
 		os.Exit(1)
 	}
 
-	sqlContent := migrations.GenerateSQLScript(ops, dialect)
+	sqlContent := migrations.ScriptMigrations(regs, dialect)
 	sqlPath := filepath.Join(dir, migrations.SQLScriptFileName(name))
 	if err := os.WriteFile(sqlPath, []byte(sqlContent), 0o644); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing SQL script: %v\n", err)

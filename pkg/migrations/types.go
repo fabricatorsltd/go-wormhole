@@ -7,22 +7,26 @@ import "reflect"
 // definition, which every supported dialect accepts (including SQLite, where
 // table-level ALTER ADD CONSTRAINT is unavailable).
 type ColumnRef struct {
-	Table    string // referenced table
-	Column   string // referenced column
-	OnDelete string // optional action: CASCADE, SET NULL, RESTRICT, ... (empty = dialect default)
+	Table    string `json:"table"`              // referenced table
+	Column   string `json:"column"`             // referenced column
+	OnDelete string `json:"on_delete,omitempty"` // optional action: CASCADE, SET NULL, RESTRICT, ...
 }
 
-// ColumnDef describes a single column in a CREATE TABLE or ADD COLUMN.
+// ColumnDef describes a single column in a CREATE TABLE or ADD COLUMN. The JSON
+// tags let it be serialized into the model snapshot file; GoType is omitted
+// because the snapshot resolves a concrete SQLType before writing.
 type ColumnDef struct {
-	Name       string // storage column name (snake_case)
-	SQLType    string // explicit SQL type, e.g. "varchar(255)"
-	PrimaryKey bool
-	AutoIncr   bool
-	Nullable   bool
-	Default    string     // literal default expression, e.g. "'active'"
-	Index      string     // secondary index name (empty = none)
-	Ref        *ColumnRef // foreign-key reference (nil = none)
-	GoType     reflect.Type
+	Name       string       `json:"name"`
+	SQLType    string       `json:"sql_type,omitempty"`
+	PrimaryKey bool         `json:"primary_key,omitempty"`
+	AutoIncr   bool         `json:"auto_incr,omitempty"`
+	Nullable   bool         `json:"nullable,omitempty"`
+	Default    string       `json:"default,omitempty"`     // literal default expression
+	Index      string       `json:"index,omitempty"`       // explicit secondary index name
+	Indexed    bool         `json:"indexed,omitempty"`     // a secondary index is requested
+	Unique     bool         `json:"unique,omitempty"`      // the index is unique
+	Ref        *ColumnRef   `json:"ref,omitempty"`         // foreign-key reference
+	GoType     reflect.Type `json:"-"`
 }
 
 // --- Migration operations ---
@@ -97,7 +101,8 @@ func (o CreateIndexOp) Kind() OpKind { return OpCreateIndex }
 
 // DropIndexOp drops a secondary index.
 type DropIndexOp struct {
-	Name string
+	Name  string
+	Table string // required by MySQL/MSSQL DROP INDEX; optional for Postgres/SQLite
 }
 
 func (o DropIndexOp) Kind() OpKind { return OpDropIndex }
@@ -121,11 +126,11 @@ func (o RawSQLOp) Kind() OpKind { return OpRawSQL }
 
 // DatabaseSchema represents the current state of the database for diffing.
 type DatabaseSchema struct {
-	Tables map[string]*TableSchema
+	Tables map[string]*TableSchema `json:"tables"`
 }
 
 // TableSchema describes one table in the current database.
 type TableSchema struct {
-	Name    string
-	Columns map[string]*ColumnDef
+	Name    string                `json:"name"`
+	Columns map[string]*ColumnDef `json:"columns"`
 }

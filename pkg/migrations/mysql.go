@@ -1,6 +1,8 @@
 package migrations
 
 import (
+	"fmt"
+
 	"github.com/fabricatorsltd/go-wormhole/pkg/util"
 )
 
@@ -16,6 +18,11 @@ func (MySQLDialect) QuoteIdent(s string) string      { return "`" + s + "`" }
 func (MySQLDialect) AutoIncrementClause() string     { return "AUTO_INCREMENT" }
 func (MySQLDialect) AutoIncrementType(string) string { return "" }
 func (MySQLDialect) SupportsIfNotExists() bool       { return true }
+
+// DropIndexSQL renders MySQL's table-scoped DROP INDEX (no IF EXISTS).
+func (d MySQLDialect) DropIndexSQL(name, table string) string {
+	return fmt.Sprintf("DROP INDEX %s ON %s", d.QuoteIdent(name), d.QuoteIdent(table))
+}
 
 // DisableConstraints returns a SQL statement to disable foreign key checks
 // or other constraints globally in MySQL.

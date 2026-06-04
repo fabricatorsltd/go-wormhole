@@ -2,6 +2,7 @@ package migrations
 
 import (
 	"reflect"
+	"sort"
 
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
 )
@@ -26,14 +27,14 @@ func ComputeDiff(targets []*model.EntityMeta, current DatabaseSchema) []Migratio
 		if !exists {
 			// Whole table is new
 			ops = append(ops, createTableFromMeta(meta, fks[meta.Name]))
-			// Add indexes for new table
-			ops = append(ops, indexOpsForMeta(meta)...)
+			// All of the table's indexes are new.
+			ops = append(ops, diffIndexOps(meta, nil)...)
 			continue
 		}
 
-		// Table exists — diff columns
+		// Table exists: diff columns and indexes against the snapshot.
 		ops = append(ops, diffColumns(meta, existing, fks[meta.Name])...)
-		ops = append(ops, indexOpsForMeta(meta)...)
+		ops = append(ops, diffIndexOps(meta, existing)...)
 	}
 
 	// Detect dropped tables (in DB but not in code)
@@ -178,27 +179,90 @@ func columnChanged(old *ColumnDef, new *ColumnDef) bool {
 	return false
 }
 
-func indexOpsForMeta(meta *model.EntityMeta) []MigrationOp {
-	var ops []MigrationOp
+// indexDef is a resolved single-column index used for diffing.
+type indexDef struct {
+	name   string
+	column string
+	unique bool
+}
+
+// indexName derives a deterministic, table-qualified index name (engines like
+// Postgres have a schema-global index namespace). An explicit name wins.
+func indexName(table, column, explicit string, unique bool) string {
+	if explicit != "" {
+		return explicit
+	}
+	prefix := "idx"
+	if unique {
+		prefix = "uniq"
+	}
+	return prefix + "_" + table + "_" + column
+}
+
+// modelIndexes returns the indexes the model declares, keyed by index name.
+func modelIndexes(meta *model.EntityMeta) map[string]indexDef {
+	out := map[string]indexDef{}
 	for _, f := range meta.Fields {
 		if f.Index == "" && !f.Indexed && !f.Unique {
 			continue
 		}
-		// Index names are schema-global in some engines (e.g. Postgres), so an
-		// auto-derived name is table-qualified and deterministic.
-		name := f.Index
-		if name == "" {
-			prefix := "idx"
-			if f.Unique {
-				prefix = "uniq"
-			}
-			name = prefix + "_" + meta.Name + "_" + f.Column
+		n := indexName(meta.Name, f.Column, f.Index, f.Unique)
+		out[n] = indexDef{name: n, column: f.Column, unique: f.Unique}
+	}
+	return out
+}
+
+// snapshotIndexes returns the indexes a snapshot table records, keyed by name.
+func snapshotIndexes(table *TableSchema) map[string]indexDef {
+	out := map[string]indexDef{}
+	if table == nil {
+		return out
+	}
+	for _, c := range table.Columns {
+		if c.Index == "" && !c.Indexed && !c.Unique {
+			continue
 		}
+		n := indexName(table.Name, c.Name, c.Index, c.Unique)
+		out[n] = indexDef{name: n, column: c.Name, unique: c.Unique}
+	}
+	return out
+}
+
+// diffIndexOps emits CreateIndex/DropIndex only for indexes that actually
+// changed between the snapshot and the model, so an unchanged indexed model
+// diffs to zero ops (no spurious re-create). Output is sorted for determinism.
+func diffIndexOps(meta *model.EntityMeta, existing *TableSchema) []MigrationOp {
+	desired := modelIndexes(meta)
+	current := snapshotIndexes(existing)
+
+	var creates, drops []string
+	for name, d := range desired {
+		if c, ok := current[name]; !ok || c.unique != d.unique {
+			creates = append(creates, name)
+			if ok && c.unique != d.unique {
+				drops = append(drops, name) // recreate with new uniqueness
+			}
+		}
+	}
+	for name := range current {
+		if _, ok := desired[name]; !ok {
+			drops = append(drops, name)
+		}
+	}
+	sort.Strings(creates)
+	sort.Strings(drops)
+
+	var ops []MigrationOp
+	for _, name := range drops {
+		ops = append(ops, DropIndexOp{Name: name, Table: meta.Name})
+	}
+	for _, name := range creates {
+		d := desired[name]
 		ops = append(ops, CreateIndexOp{
 			Name:    name,
 			Table:   meta.Name,
-			Columns: []string{f.Column},
-			Unique:  f.Unique,
+			Columns: []string{d.column},
+			Unique:  d.unique,
 		})
 	}
 	return ops
@@ -221,6 +285,8 @@ func fieldToColumnDef(f model.FieldMeta) ColumnDef {
 		Nullable:   f.Nullable,
 		Default:    def,
 		Index:      f.Index,
+		Indexed:    f.Indexed,
+		Unique:     f.Unique,
 		GoType:     f.GoType,
 	}
 }
