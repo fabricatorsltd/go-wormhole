@@ -27,6 +27,25 @@ func TestValidateModels_RejectsComposite(t *testing.T) {
 	}
 }
 
+// ValidateModels rejects a computed column (generated-column DDL is not yet
+// emitted; the column must be defined by hand).
+func TestValidateModels_RejectsComputed(t *testing.T) {
+	meta := &model.EntityMeta{
+		Name: "c_item",
+		Fields: []model.FieldMeta{
+			{FieldName: "ID", Column: "id", PrimaryKey: true},
+			{FieldName: "Total", Column: "total", Computed: true},
+		},
+	}
+	meta.PrimaryKeys = []*model.FieldMeta{&meta.Fields[0]}
+	meta.PrimaryKey = &meta.Fields[0]
+
+	err := migrations.ValidateModels([]*model.EntityMeta{meta})
+	if err == nil || !strings.Contains(err.Error(), "computed") {
+		t.Fatalf("want computed rejection, got %v", err)
+	}
+}
+
 // A single-PK model passes validation.
 func TestValidateModels_AllowsSingle(t *testing.T) {
 	meta := &model.EntityMeta{

@@ -85,6 +85,7 @@ func ParseType(t reflect.Type) *model.EntityMeta {
 			Index:      firstNonEmpty(fm.Get("index"), fm.Get("unique_index")),
 			Indexed:    fm.Has("index") || fm.Has("unique") || fm.Has("unique_index"),
 			Unique:     fm.Has("unique") || fm.Has("unique_index"),
+			Computed:   fm.Has("computed"),
 		}
 
 		if v := fm.Get("type"); v != "" {

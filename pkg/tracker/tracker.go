@@ -137,6 +137,12 @@ func ChangedFields(e *model.Entry) []string {
 		val = val.Elem()
 	}
 	for _, f := range e.Meta.Fields {
+		// Computed columns are database-generated and read-only; a server-side
+		// change must not be reported as dirty (an UPDATE writing the column
+		// would be rejected by the database).
+		if f.Computed {
+			continue
+		}
 		cur := val.FieldByName(f.FieldName).Interface()
 		old, exists := e.Snapshot[f.FieldName]
 		if !exists || !reflect.DeepEqual(cur, old) {

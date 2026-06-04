@@ -160,6 +160,11 @@ func cliMigrationsAdd(name string) {
 		os.Exit(1)
 	}
 
+	if err := migrations.ValidateModels(models); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Diff the model against the saved snapshot (EF Core's ModelSnapshot model):
 	// the snapshot is derived from the model, so it has no raw-SQL blind spot and
 	// no dependency on every prior migration being registered.

@@ -19,6 +19,11 @@ func ValidateModels(targets []*model.EntityMeta) error {
 		if len(m.PrimaryKeys) > 1 {
 			return fmt.Errorf("entity %q has a composite primary key, which migration generation does not yet support; define the table manually", m.Name)
 		}
+		for _, f := range m.Fields {
+			if f.Computed {
+				return fmt.Errorf("entity %q column %q is computed; generated-column DDL is not yet supported, define the column manually", m.Name, f.Column)
+			}
+		}
 	}
 	return nil
 }
