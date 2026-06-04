@@ -2,9 +2,9 @@ package query
 
 // Builder provides a fluent API to compose a provider-neutral Query AST.
 type Builder struct {
-	q            Query
-	predicates   []Node
-	havingPreds  []Node
+	q           Query
+	predicates  []Node
+	havingPreds []Node
 }
 
 // From starts a new query targeting the given entity name.
@@ -67,6 +67,19 @@ func (b *Builder) Join(entity string, on Node) *Builder {
 // LeftJoin attaches a LEFT JOIN <entity> ON <on> clause to the query.
 func (b *Builder) LeftJoin(entity string, on Node) *Builder {
 	b.q.Joins = append(b.q.Joins, JoinSpec{Type: JoinLeft, Entity: entity, On: on})
+	return b
+}
+
+// Distinct emits SELECT DISTINCT, collapsing duplicate result rows.
+func (b *Builder) Distinct() *Builder {
+	b.q.Distinct = true
+	return b
+}
+
+// Select restricts the SELECT list to the given columns (field or column
+// names). With no columns the query selects every mapped field.
+func (b *Builder) Select(columns ...string) *Builder {
+	b.q.Columns = append(b.q.Columns, columns...)
 	return b
 }
 

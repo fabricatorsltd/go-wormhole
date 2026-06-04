@@ -75,9 +75,11 @@ type Query struct {
 	OrderBy    []Sort
 	Limit      int
 	Offset     int
-	Includes   []string   // eager-loaded relations
-	GroupBy    []string   // GROUP BY field names
-	Having     Node       // HAVING condition tree
-	Aggregates []Aggregate // aggregate expressions (COUNT, SUM, …)
+	Includes   []string    // eager-loaded relations
+	GroupBy    []string    // GROUP BY field names
+	Having     Node        // HAVING condition tree
+	Aggregates []Aggregate // aggregate expressions (COUNT, SUM, ...)
 	Joins      []JoinSpec  // additional tables joined via JOIN clauses
+	Distinct   bool        // emit SELECT DISTINCT
+	Columns    []string    // projected columns (field or column names); empty selects all
 }

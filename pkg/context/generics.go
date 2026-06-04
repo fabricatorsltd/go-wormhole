@@ -82,6 +82,19 @@ func (qr *QueryResult[T]) Where(nodes ...query.Node) *QueryResult[T] {
 	return qr
 }
 
+// Distinct collapses duplicate result rows (SELECT DISTINCT).
+func (qr *QueryResult[T]) Distinct() *QueryResult[T] {
+	qr.builder.Distinct()
+	return qr
+}
+
+// Select restricts the query to a subset of columns (field or column names)
+// instead of every mapped field.
+func (qr *QueryResult[T]) Select(fields ...string) *QueryResult[T] {
+	qr.builder.Select(fields...)
+	return qr
+}
+
 // OrderBy appends a sort clause.
 func (qr *QueryResult[T]) OrderBy(field string, dir query.SortDir) *QueryResult[T] {
 	qr.builder.OrderBy(field, dir)

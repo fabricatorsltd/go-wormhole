@@ -60,8 +60,13 @@ func (c *Compiler) Select(meta *model.EntityMeta, q query.Query) Compiled {
 	var b strings.Builder
 	var params []any
 
-	// SELECT columns (with optional TOP for MSSQL)
+	// SELECT columns (with optional DISTINCT and TOP for MSSQL)
 	b.WriteString("SELECT ")
+	// DISTINCT applies to row projection, not to an aggregate result (where it
+	// would be redundant alongside GROUP BY); skip it in the aggregate branch.
+	if q.Distinct && len(q.Aggregates) == 0 {
+		b.WriteString("DISTINCT ")
+	}
 	if c.UseTOP && q.Limit > 0 && q.Offset == 0 {
 		b.WriteString(fmt.Sprintf("TOP %d ", q.Limit))
 	}
@@ -92,7 +97,20 @@ func (c *Compiler) Select(meta *model.EntityMeta, q query.Query) Compiled {
 			fromTable = meta.Name
 		}
 		qualifySelect := len(q.Joins) > 0
-		for i, f := range meta.Fields {
+		// Projected subset (Select) takes precedence; otherwise every mapped
+		// field. Projected names may be field or column names, resolved the same
+		// way as ORDER BY / GROUP BY.
+		cols := make([]string, 0, len(meta.Fields))
+		if len(q.Columns) > 0 {
+			for _, name := range q.Columns {
+				cols = append(cols, fieldColumn(meta, name))
+			}
+		} else {
+			for _, f := range meta.Fields {
+				cols = append(cols, f.Column)
+			}
+		}
+		for i, col := range cols {
 			if i > 0 {
 				b.WriteString(", ")
 			}
@@ -100,7 +118,7 @@ func (c *Compiler) Select(meta *model.EntityMeta, q query.Query) Compiled {
 				b.WriteString(c.quote(fromTable))
 				b.WriteString(".")
 			}
-			b.WriteString(c.quote(f.Column))
+			b.WriteString(c.quote(col))
 		}
 	}
 

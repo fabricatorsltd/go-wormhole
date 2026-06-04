@@ -41,6 +41,8 @@ type EntitySet struct {
 	includes      []string
 	ignoreFilters bool
 	tracking      trackMode
+	distinct      bool
+	selectCols    []string
 }
 
 // NoTracking runs this query without attaching the result to the change
@@ -209,6 +211,71 @@ func (s *EntitySet) From(table string) *EntitySet {
 func (s *EntitySet) Where(nodes ...query.Node) *EntitySet {
 	s.preds = append(s.preds, nodes...)
 	return s
+}
+
+// Distinct collapses duplicate rows in the result (SELECT DISTINCT). Most
+// useful with Select, to dedupe a projected subset of columns. Chainable.
+func (s *EntitySet) Distinct() *EntitySet {
+	s.distinct = true
+	return s
+}
+
+// Select restricts the query to a subset of columns instead of every mapped
+// field, the equivalent of a projection. Names are field or column names; the
+// type-safe dsl.FieldName(&u, &u.Email) resolves one at compile time.
+// Chainable.
+//
+// Unselected fields stay at their zero value when scanned into the entity, so
+// Select pairs naturally with a DTO destination (Set(&dtos).From("table")).
+func (s *EntitySet) Select(fields ...string) *EntitySet {
+	s.selectCols = append(s.selectCols, fields...)
+	return s
+}
+
+// projectedColumns returns the Select column set augmented with columns a later
+// step needs even if the caller projected them away: the primary key when the
+// results are tracked (the identity map keys on it), and the primary key plus
+// each eager-loaded relation's local key so Include can stitch children.
+// Without this, projecting away a key silently yields untracked rows or empty
+// relations. EF Core augments a projection that feeds tracking or Include the
+// same way. Returns nil when there is no projection (every column is selected).
+func (s *EntitySet) projectedColumns() []string {
+	if len(s.selectCols) == 0 {
+		return nil
+	}
+	cols := append([]string(nil), s.selectCols...)
+	have := make(map[string]bool, len(cols))
+	for _, c := range cols {
+		have[canonicalColumn(s.meta, c)] = true
+	}
+	add := func(col string) {
+		if col == "" || have[col] {
+			return
+		}
+		cols = append(cols, col)
+		have[col] = true
+	}
+	if (s.tracking == trackOn || len(s.includes) > 0) && s.meta.PrimaryKey != nil {
+		add(s.meta.PrimaryKey.Column)
+	}
+	for _, name := range s.includes {
+		if rel := s.meta.Relation(name); rel != nil {
+			add(rel.LocalKey)
+		}
+	}
+	return cols
+}
+
+// canonicalColumn resolves a field or column name to its storage column,
+// matching how the compiler maps SELECT/ORDER BY names.
+func canonicalColumn(meta *model.EntityMeta, name string) string {
+	if f := meta.Field(name); f != nil {
+		return f.Column
+	}
+	if f := meta.FieldByColumn(name); f != nil {
+		return f.Column
+	}
+	return name
 }
 
 // OrderBy appends a sort clause. Chainable.
@@ -508,6 +575,12 @@ func (s *EntitySet) buildQuery() query.Query {
 		tableName = s.tableOverride
 	}
 	b := query.From(tableName)
+	if s.distinct {
+		b.Distinct()
+	}
+	if cols := s.projectedColumns(); len(cols) > 0 {
+		b.Select(cols...)
+	}
 	// Apply the caller's predicates plus any registered query filters, ANDed
 	// together. Filters are keyed on the table actually queried (tableName), so
 	// a From() override onto a registered, filtered table is still scoped rather
