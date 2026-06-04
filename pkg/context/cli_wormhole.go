@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/fabricatorsltd/go-wormhole/pkg/discovery"
@@ -170,6 +171,10 @@ func cliMigrationsAdd(name string) {
 		os.Exit(1)
 	}
 
+	// Like EF Core's `migrations add`, this writes only the migration code
+	// (dialect-agnostic operations). The SQL is never frozen here: `database
+	// update` renders it on the fly for the target dialect, and `migrations
+	// script` emits a .sql file for a chosen dialect on demand.
 	goContent := migrations.GenerateMigrationFile(name, ops)
 	goPath := filepath.Join(dir, migrations.MigrationFileName(name))
 	if err := os.WriteFile(goPath, []byte(goContent), 0o644); err != nil {
@@ -177,42 +182,19 @@ func cliMigrationsAdd(name string) {
 		os.Exit(1)
 	}
 
-	sqlContent := migrations.GenerateSQLScript(ops, cliResolveDialect(os.Getenv("WORMHOLE_DRIVER")))
-	sqlPath := filepath.Join(dir, migrations.SQLScriptFileName(name))
-	if err := os.WriteFile(sqlPath, []byte(sqlContent), 0o644); err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing SQL script: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Created migration %q in %s (%d operation(s))\n", name, dir, len(ops))
-	fmt.Printf("  Go:  %s\n", goPath)
-	fmt.Printf("  SQL: %s\n", sqlPath)
+	fmt.Printf("Created migration %q (%d operation(s)): %s\n", name, len(ops), goPath)
+	fmt.Println("Apply it with 'database update', or emit SQL with 'migrations script <name> <dialect>'.")
 }
 
 func cliMigrationsList() {
-	dir := cliDir()
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			fmt.Println("No migrations directory found.")
-			return
-		}
-		fmt.Fprintf(os.Stderr, "Error reading migrations directory: %v\n", err)
-		os.Exit(1)
-	}
-
-	var files []string
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
-			files = append(files, e.Name())
-		}
-	}
-
-	if len(files) == 0 {
+	// List the registered migrations, the same source `database update` applies,
+	// rather than scanning generated .sql files (which `add` no longer writes).
+	regs := migrations.Registered()
+	if len(regs) == 0 {
 		fmt.Println("No migrations found.")
 		return
 	}
+	sort.Slice(regs, func(i, j int) bool { return regs[i].ID < regs[j].ID })
 
 	// If DSN is set, enrich with applied/pending status.
 	var applied map[string]bool
@@ -229,16 +211,15 @@ func cliMigrationsList() {
 		}
 	}
 
-	for _, f := range files {
-		id := strings.TrimSuffix(f, ".sql")
+	for _, m := range regs {
 		if applied != nil {
 			status := "pending"
-			if applied[id] {
+			if applied[m.ID] {
 				status = "applied"
 			}
-			fmt.Printf("  [%s] %s\n", status, id)
+			fmt.Printf("  [%s] %s\n", status, m.ID)
 		} else {
-			fmt.Printf("  %s\n", id)
+			fmt.Printf("  %s\n", m.ID)
 		}
 	}
 }
