@@ -4,6 +4,7 @@ import (
 	stdctx "context"
 	"database/sql"
 	"fmt"
+	"iter"
 	"reflect"
 
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
@@ -353,6 +354,68 @@ func (s *EntitySet) attachResults() {
 		}
 		s.ctx.tracker.Attach(ptr)
 	}
+}
+
+// Stream executes the query and yields one entity at a time instead of loading
+// the whole result set, for iterating large reads without buffering every row.
+// Each yielded value is a *T (pointer to the entity type); range with the
+// standard two-value form and stop by breaking:
+//
+//	for v, err := range ctx.Set(&User{}).Where(...).Stream(ctx) {
+//	    if err != nil {
+//	        return err
+//	    }
+//	    u := v.(*User)
+//	    // ...
+//	}
+//
+// Use the generic Stream[T] helper to get *T directly without the assertion.
+//
+// Registered query filters apply, exactly as for All. Streamed entities are not
+// change-tracked (tracking would rebuild the buffer streaming exists to avoid).
+// The read is not retried and does not pass through the circuit breaker: both
+// wrap a single buffered call, but a stream is paced by the consumer, so
+// retrying or breaker-counting a half-consumed iteration is meaningless.
+// Include, GroupBy, and Aggregate are not supported with streaming and yield an
+// error. Requires a provider that implements provider.StreamExecutor.
+func (s *EntitySet) Stream(ctx stdctx.Context) iter.Seq2[any, error] {
+	if ctx == nil {
+		ctx = s.ctx.opCtx()
+	}
+	return func(yield func(any, error) bool) {
+		if err := s.checkStreamable(); err != nil {
+			yield(nil, err)
+			return
+		}
+		se, ok := s.ctx.provider.(provider.StreamExecutor)
+		if !ok {
+			yield(nil, fmt.Errorf("provider %q does not support streaming (StreamExecutor)", s.ctx.provider.Name()))
+			return
+		}
+
+		q := s.buildQuery()
+		// ExecuteStream returns nil the moment yield reports stop, so a consumer
+		// break never reaches the post-loop error yield below.
+		err := se.ExecuteStream(ctx, s.meta, q, s.meta.GoType, func(e any) bool {
+			return yield(e, nil)
+		})
+		if err != nil {
+			yield(nil, err)
+		}
+	}
+}
+
+// checkStreamable rejects query shapes that cannot stream row by row: Include
+// batches a separate query over the full result set, and GroupBy/Aggregate
+// collapse rows server-side into a shape that is not the entity type.
+func (s *EntitySet) checkStreamable() error {
+	switch {
+	case len(s.includes) > 0:
+		return fmt.Errorf("Stream does not support Include (it batches a second query over all results); use All")
+	case len(s.groupBy) > 0 || len(s.aggregates) > 0:
+		return fmt.Errorf("Stream does not support GroupBy/Aggregate; use All")
+	}
+	return nil
 }
 
 // Delete performs a bulk DELETE against the underlying provider matching the

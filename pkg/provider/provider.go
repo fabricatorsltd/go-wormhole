@@ -4,6 +4,7 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
+	"reflect"
 
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
 	"github.com/fabricatorsltd/go-wormhole/pkg/query"
@@ -123,6 +124,19 @@ type VersionedDeleter interface {
 // fall back to the per-row Insert path transparently.
 type BatchInserter interface {
 	InsertBatch(ctx context.Context, meta *model.EntityMeta, entities []any) error
+}
+
+// StreamExecutor is an optional interface a Provider may implement to scan a
+// query row by row instead of buffering the whole result into a slice, for
+// iterating large reads without holding every row in memory at once.
+//
+// ExecuteStream invokes yield once per row, with the row scanned into a fresh
+// *T (boxed as any) where structType is the element struct type T. It stops
+// early without error if yield returns false, and returns any query or scan
+// error. The read is not retried (a partially consumed stream cannot be
+// replayed) and the yielded entities are not change-tracked.
+type StreamExecutor interface {
+	ExecuteStream(ctx context.Context, meta *model.EntityMeta, q query.Query, structType reflect.Type, yield func(any) bool) error
 }
 
 // BulkUpdater is an optional interface a Provider may implement to update many

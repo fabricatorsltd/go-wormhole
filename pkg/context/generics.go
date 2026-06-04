@@ -2,6 +2,7 @@ package context
 
 import (
 	stdctx "context"
+	"iter"
 
 	"github.com/fabricatorsltd/go-wormhole/pkg/query"
 	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
@@ -26,6 +27,30 @@ func Find[T any](ctx stdctx.Context, c *DbContext, pk any) (*T, error) {
 		c.tracker.Attach(dest)
 	}
 	return dest, nil
+}
+
+// Stream is the typed form of EntitySet.Stream: it yields *T directly so the
+// caller skips the any type assertion. The EntitySet carries the query (and its
+// registered filters); build it with DbContext.Set.
+//
+//	for u, err := range context.Stream[User](ctx, db.Set(&User{}).Where(...)) {
+//	    if err != nil {
+//	        return err
+//	    }
+//	    use(u)
+//	}
+func Stream[T any](ctx stdctx.Context, s *EntitySet) iter.Seq2[*T, error] {
+	return func(yield func(*T, error) bool) {
+		for v, err := range s.Stream(ctx) {
+			if err != nil {
+				yield(nil, err)
+				return
+			}
+			if !yield(v.(*T), nil) {
+				return
+			}
+		}
+	}
 }
 
 // QueryResult holds the results of a generic query and allows

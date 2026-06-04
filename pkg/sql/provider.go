@@ -739,56 +739,101 @@ func scanRows(meta *model.EntityMeta, rows *sql.Rows, dest any) error {
 		return fmt.Errorf("dest must be *[]T or *[]*T")
 	}
 
-	// Read actual column names returned by the query
 	cols, err := rows.Columns()
 	if err != nil {
 		return fmt.Errorf("columns: %w", err)
 	}
-
-	// Build column→field index for O(1) lookup
-	colToField := make(map[string]*model.FieldMeta, len(meta.Fields))
-	for i := range meta.Fields {
-		colToField[meta.Fields[i].Column] = &meta.Fields[i]
-	}
+	colToField := columnFieldIndex(meta)
 
 	sliceVal := dv.Elem()
 	elemType := sliceVal.Type().Elem()
 	isPtr := elemType.Kind() == reflect.Ptr
+	structType := elemType
+	if isPtr {
+		structType = elemType.Elem()
+	}
 
 	for rows.Next() {
-		var elem reflect.Value
-		if isPtr {
-			elem = reflect.New(elemType.Elem())
-		} else {
-			elem = reflect.New(elemType)
-		}
-
-		target := elem.Elem()
-
-		// Build scan destinations aligned to actual column order
-		ptrs := make([]any, len(cols))
-		for i, col := range cols {
-			if fm, ok := colToField[col]; ok {
-				ptrs[i] = scanTarget(target.FieldByName(fm.FieldName), fm)
-			} else {
-				// Column not mapped (e.g. from a JOIN) — discard into a throwaway
-				var discard any
-				ptrs[i] = &discard
-			}
-		}
-
-		if err := rows.Scan(ptrs...); err != nil {
+		elem, err := scanElem(rows, cols, colToField, structType) // *T
+		if err != nil {
 			return err
 		}
-
 		if isPtr {
 			sliceVal = reflect.Append(sliceVal, elem)
 		} else {
-			sliceVal = reflect.Append(sliceVal, target)
+			sliceVal = reflect.Append(sliceVal, elem.Elem())
 		}
 	}
 
 	dv.Elem().Set(sliceVal)
+	return rows.Err()
+}
+
+// columnFieldIndex maps a storage column name to its field metadata for O(1)
+// scan-target lookup.
+func columnFieldIndex(meta *model.EntityMeta) map[string]*model.FieldMeta {
+	idx := make(map[string]*model.FieldMeta, len(meta.Fields))
+	for i := range meta.Fields {
+		idx[meta.Fields[i].Column] = &meta.Fields[i]
+	}
+	return idx
+}
+
+// scanElem scans the current row into a freshly allocated *structType, aligning
+// scan targets to the query's actual column order. Columns with no mapped field
+// (e.g. from a JOIN) are discarded. Shared by the buffered (scanRows) and
+// streaming (ExecuteStream) paths so their per-row scanning cannot drift.
+func scanElem(rows *sql.Rows, cols []string, colToField map[string]*model.FieldMeta, structType reflect.Type) (reflect.Value, error) {
+	elem := reflect.New(structType) // *T
+	target := elem.Elem()
+	ptrs := make([]any, len(cols))
+	for i, col := range cols {
+		if fm, ok := colToField[col]; ok {
+			ptrs[i] = scanTarget(target.FieldByName(fm.FieldName), fm)
+		} else {
+			var discard any
+			ptrs[i] = &discard
+		}
+	}
+	if err := rows.Scan(ptrs...); err != nil {
+		return reflect.Value{}, err
+	}
+	return elem, nil
+}
+
+// ExecuteStream scans a query row by row, invoking yield with each row as a
+// fresh *T, implementing provider.StreamExecutor. It does not retry (a
+// partially consumed stream cannot be replayed) and closes the rows even when
+// the consumer stops early or panics.
+func (p *Provider) ExecuteStream(ctx context.Context, meta *model.EntityMeta, q query.Query, structType reflect.Type, yield func(any) bool) error {
+	q, err := provider.ValidateQueryCapabilities(meta, p.Capabilities(), q)
+	if err != nil {
+		return err
+	}
+	c := p.compiler.Select(meta, q)
+	p.logQuery(c)
+
+	rows, err := p.db.QueryContext(ctx, c.SQL, c.Params...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		return fmt.Errorf("columns: %w", err)
+	}
+	colToField := columnFieldIndex(meta)
+
+	for rows.Next() {
+		elem, err := scanElem(rows, cols, colToField, structType)
+		if err != nil {
+			return err
+		}
+		if !yield(elem.Interface()) {
+			return nil
+		}
+	}
 	return rows.Err()
 }
 
