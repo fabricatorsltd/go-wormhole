@@ -55,6 +55,10 @@ type Relation struct {
 	LocalKey   string // column on the owning table
 	ForeignKey string // column on the related table
 
+	// OnDelete is the SQL referential action for the generated foreign key
+	// (e.g. "CASCADE", "SET NULL", "RESTRICT"); empty means the dialect default.
+	OnDelete string
+
 	// Many-to-many join table linkage (empty for other kinds).
 	JoinTable      string
 	JoinLocalKey   string // join-table column referencing the owner

@@ -80,11 +80,16 @@ func buildForeignKeys(targets []*model.EntityMeta) map[string]map[string]*Column
 		if out[table] == nil {
 			out[table] = make(map[string]*ColumnRef)
 		}
-		// First declaration wins; avoids duplicate FKs when both sides of a
-		// relationship are modeled (BelongsTo + OneToMany).
-		if _, exists := out[table][col]; !exists {
-			out[table][col] = ref
+		// One FK may be modeled from both sides (BelongsTo + OneToMany). Keep the
+		// first reference, but adopt a referential action from the other side so
+		// on_delete is not lost to iteration order when only one side declares it.
+		if existing, ok := out[table][col]; ok {
+			if existing.OnDelete == "" {
+				existing.OnDelete = ref.OnDelete
+			}
+			return
 		}
+		out[table][col] = ref
 	}
 
 	for _, owner := range targets {
@@ -93,14 +98,16 @@ func buildForeignKeys(targets []*model.EntityMeta) map[string]map[string]*Column
 			case model.RelationBelongsTo:
 				// FK on the owner referencing the target's primary key.
 				put(owner.Name, rel.LocalKey, &ColumnRef{
-					Table:  rel.TargetEntity,
-					Column: pkColumn(rel.TargetEntity, rel.ForeignKey),
+					Table:    rel.TargetEntity,
+					Column:   pkColumn(rel.TargetEntity, rel.ForeignKey),
+					OnDelete: rel.OnDelete,
 				})
 			case model.RelationOneToMany, model.RelationOneToOne:
 				// FK on the related table referencing the owner's local key.
 				put(rel.TargetEntity, rel.ForeignKey, &ColumnRef{
-					Table:  owner.Name,
-					Column: rel.LocalKey,
+					Table:    owner.Name,
+					Column:   rel.LocalKey,
+					OnDelete: rel.OnDelete,
 				})
 			}
 		}

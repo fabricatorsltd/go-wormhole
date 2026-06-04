@@ -2,6 +2,7 @@ package schema
 
 import (
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -160,6 +161,25 @@ func isScalarStruct(t reflect.Type) bool {
 	return t == reflect.TypeOf(time.Time{})
 }
 
+// normalizeOnDelete maps an on_delete tag value to its SQL referential action,
+// or "" for an empty/unknown value (the dialect default applies).
+func normalizeOnDelete(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "cascade":
+		return "CASCADE"
+	case "set_null", "setnull", "null":
+		return "SET NULL"
+	case "restrict":
+		return "RESTRICT"
+	case "no_action", "noaction":
+		return "NO ACTION"
+	case "set_default", "setdefault":
+		return "SET DEFAULT"
+	default:
+		return ""
+	}
+}
+
 // firstNonEmpty returns the first non-empty string among its arguments.
 func firstNonEmpty(vals ...string) string {
 	for _, v := range vals {
@@ -210,6 +230,7 @@ func parseRelation(owner *model.EntityMeta, fieldName string, fieldType reflect.
 		TargetEntity: util.ToSnake(target.Name()),
 		LocalKey:     ownerPK,
 		ForeignKey:   ownerFK,
+		OnDelete:     normalizeOnDelete(tagVals["on_delete"]),
 	}
 
 	isSlice := fieldType.Kind() == reflect.Slice

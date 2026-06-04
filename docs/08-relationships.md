@@ -10,8 +10,10 @@ Current scope:
 - **1:1, 1:N, belongs-to**: parsed, foreign keys generated, eager loading works.
 - **N:M**: parsed, foreign-key aware, and eager loading via `Include` works
   (loaded through the join table in a second batched query).
-- **Cascade delete** is not yet implemented. Foreign-key fix-up and parent-before-child
-  insert ordering on `Save` are.
+- **Cascade delete** is declarative: tag a relationship `on_delete:cascade`
+  (or `set_null`/`restrict`) and the generated foreign key carries that
+  referential action, so the database enforces it. Foreign-key fix-up and
+  parent-before-child insert ordering on `Save` are also handled.
 
 ## Defining Relationships
 
@@ -138,6 +140,29 @@ CREATE TABLE "order" (
 
 > SQLite does not enforce foreign keys unless `PRAGMA foreign_keys = ON` is set
 > on the connection. PostgreSQL, MySQL, and SQL Server enforce them by default.
+
+### Referential actions (cascade)
+
+Add `on_delete:<action>` to a relationship to set the foreign key's `ON DELETE`
+behavior, enforced by the database (the same way EF Core's `OnDelete` maps to a
+referential action):
+
+```go
+type User struct {
+    ID     int      `db:"column:id;primary_key;auto_increment"`
+    Orders []*Order `db:"fk:user_id;on_delete:cascade"` // deleting a user deletes its orders
+}
+```
+
+Accepted values: `cascade`, `set_null`, `restrict`, `no_action`, `set_default`
+(an unrecognized value is ignored and the dialect default applies). Declare it
+on either side of the relationship; the action is kept regardless of which side
+declares it.
+
+`set_null` requires the foreign-key column to be nullable, or the delete fails
+at the database. Foreign keys are emitted as column-level `REFERENCES`, which
+MySQL/InnoDB ignores, so referential actions are enforced on PostgreSQL, SQLite
+(with `PRAGMA foreign_keys = ON`), and SQL Server, but not MySQL.
 
 ## Saving Object Graphs
 
