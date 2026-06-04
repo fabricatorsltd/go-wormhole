@@ -35,6 +35,12 @@ type Compiler struct {
 
 	// UseTOP uses SELECT TOP N instead of LIMIT N (MSSQL).
 	UseTOP bool
+
+	// seedMode makes an insert write exactly the provided columns, including
+	// auto-increment keys and zero-valued defaulted columns, instead of applying
+	// the flush-path heuristics that drop them. It is toggled per call by
+	// InsertOnConflictSeed and never left set.
+	seedMode bool
 }
 
 // dialect names the SQL dialect this compiler targets, derived from the
@@ -253,7 +259,7 @@ func (c *Compiler) writeSelectTail(b *strings.Builder, params *[]any, meta *mode
 // string is a legitimate non-default value in the domain) should not
 // declare a `default:` on that field.
 func (c *Compiler) Insert(meta *model.EntityMeta, values map[string]any) Compiled {
-	fields := insertColumns(meta, values)
+	fields := c.selectInsertColumns(meta, values)
 	cols := make([]string, len(fields))
 	placeholders := make([]string, len(fields))
 	params := make([]any, len(fields))
@@ -312,6 +318,31 @@ func (c *Compiler) InsertMany(meta *model.EntityMeta, rows []map[string]any) Com
 // generates them); `default:`-tagged fields are skipped when their value is the
 // Go zero value so the column DEFAULT applies. This is the single source of
 // truth for which columns an INSERT carries, shared by Insert and InsertMany.
+// selectInsertColumns picks the columns an INSERT writes, honouring seed mode.
+func (c *Compiler) selectInsertColumns(meta *model.EntityMeta, values map[string]any) []model.FieldMeta {
+	if c.seedMode {
+		return seedInsertColumns(meta, values)
+	}
+	return insertColumns(meta, values)
+}
+
+// seedInsertColumns writes exactly the columns a seed row provides (minus
+// computed columns, which the database generates). A declarative seed lists
+// every column on purpose, including auto-increment keys and zero-valued
+// defaulted columns, so none of the flush-path dropping applies.
+func seedInsertColumns(meta *model.EntityMeta, values map[string]any) []model.FieldMeta {
+	out := make([]model.FieldMeta, 0, len(values))
+	for _, f := range meta.Fields {
+		if f.Computed {
+			continue
+		}
+		if _, ok := values[f.FieldName]; ok {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 func insertColumns(meta *model.EntityMeta, values map[string]any) []model.FieldMeta {
 	out := make([]model.FieldMeta, 0, len(meta.Fields))
 	for _, f := range meta.Fields {
@@ -351,6 +382,16 @@ func insertColumnKey(meta *model.EntityMeta, values map[string]any) string {
 //
 // Note the MySQL divergence documented on provider.ConflictClause: MySQL fires
 // on any unique/PK index and ignores the conflict target columns.
+// InsertOnConflictSeed is InsertOnConflict for declarative seeding: the INSERT
+// writes exactly the columns the seed row provides, including auto-increment
+// keys (so ON CONFLICT can match an explicit key) and zero-valued defaulted
+// columns. Computed columns are still skipped.
+func (c *Compiler) InsertOnConflictSeed(meta *model.EntityMeta, values map[string]any, conflict provider.ConflictClause) Compiled {
+	c.seedMode = true
+	defer func() { c.seedMode = false }()
+	return c.InsertOnConflict(meta, values, conflict)
+}
+
 func (c *Compiler) InsertOnConflict(meta *model.EntityMeta, values map[string]any, conflict provider.ConflictClause) Compiled {
 	switch c.dialect() {
 	case "mysql":
@@ -443,7 +484,7 @@ func (c *Compiler) insertOnDuplicateKey(meta *model.EntityMeta, values map[strin
 // the DB DEFAULT apply; the source row is the union of insert, match, and update
 // columns so no [src].col is ever unbound.
 func (c *Compiler) mergeUpsert(meta *model.EntityMeta, values map[string]any, conflict provider.ConflictClause) Compiled {
-	insertFields := insertColumns(meta, values)
+	insertFields := c.selectInsertColumns(meta, values)
 
 	// With no explicit conflict target, match on the full primary key (every
 	// column for a composite key), not just the first.

@@ -67,6 +67,8 @@ func (c *DbContext) runCLIIfEnabled() {
 		switch os.Args[2] {
 		case "update":
 			cliDatabaseUpdate()
+		case "seed":
+			cliDatabaseSeed()
 		default:
 			cliUsage()
 			os.Exit(1)
@@ -107,6 +109,7 @@ Usage:
   <app> migrations script <Name> [dialect]  Export migration as a .sql file
   <app> migrations list                     List pending migrations
   <app> database update                     Apply pending migrations
+  <app> database seed                       Reconcile seed files (seeds/*.json) by primary key
   <app> nosql-migrations add <Name>         Generate a NoSQL evolution script
   <app> nosql-migrations list               List NoSQL evolution scripts
   <app> nosql-migrations apply              Apply pending NoSQL evolution scripts
@@ -283,6 +286,36 @@ func cliMigrationsScript(name, dialectName string, idempotent bool) {
 	}
 
 	fmt.Printf("Created SQL script: %s\n", sqlPath)
+}
+
+func cliDatabaseSeed() {
+	driver := os.Getenv("WORMHOLE_DRIVER")
+	if driver == "" {
+		driver = "sqlite"
+	}
+	dsn := os.Getenv("WORMHOLE_DSN")
+	if dsn == "" {
+		fmt.Fprintln(os.Stderr, "Error: WORMHOLE_DSN is required")
+		os.Exit(1)
+	}
+	db, err := sql.Open(driver, dsn)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	models, err := discovery.DiscoverModels(".")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error discovering models: %v\n", err)
+		os.Exit(1)
+	}
+	seedsDir := filepath.Join(cliDir(), "seeds")
+	if err := migrations.ReconcileSeeds(stdctx.Background(), db, cliResolveDialect(driver), models, seedsDir); err != nil {
+		fmt.Fprintf(os.Stderr, "Error seeding: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Seed data reconciled.")
 }
 
 func cliDatabaseUpdate() {

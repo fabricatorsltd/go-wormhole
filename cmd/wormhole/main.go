@@ -77,6 +77,8 @@ func main() {
 		switch args[1] {
 		case "update":
 			cmdUpdate()
+		case "seed":
+			cmdSeed()
 		case "check":
 			cmdCheck()
 		default:
@@ -240,6 +242,32 @@ func cmdScript(name, dialect string, idempotent bool) {
 	fmt.Printf("Created SQL script: %s\n", path)
 }
 
+func cmdSeed() {
+	dsn := os.Getenv("WORMHOLE_DSN")
+	if dsn == "" {
+		fatal("WORMHOLE_DSN is required for database seed")
+	}
+	driver := os.Getenv("WORMHOLE_DRIVER")
+	if driver == "" {
+		driver = "sqlite"
+	}
+	db, err := sql.Open(driver, dsn)
+	if err != nil {
+		fatalf("open database: %v", err)
+	}
+	defer db.Close()
+
+	models, err := discovery.DiscoverModels(".")
+	if err != nil {
+		fatalf("discover models: %v", err)
+	}
+	seedsDir := filepath.Join(migrationsDir(), "seeds")
+	if err := migrations.ReconcileSeeds(context.Background(), db, resolveDialect(driver), models, seedsDir); err != nil {
+		fatalf("seed: %v", err)
+	}
+	fmt.Println("Seed data reconciled.")
+}
+
 func cmdUpdate() {
 	dsn := os.Getenv("WORMHOLE_DSN")
 	if dsn == "" {
@@ -334,8 +362,9 @@ func printUsage() {
 Usage:
   wormhole [-C dir] migrations add <Name>             Generate a migration from the model diff
   wormhole [-C dir] migrations list                   List migrations (applied/pending if DB reachable)
-  wormhole [-C dir] migrations script <Name> [dialect] Render migrations as a .sql script
+  wormhole [-C dir] migrations script <Name> [dialect] Render migrations as a .sql script (--idempotent)
   wormhole [-C dir] database update                   Apply pending migrations
+  wormhole [-C dir] database seed                     Reconcile seed files (migrations/seeds/*.json) by primary key
   wormhole [-C dir] database check                    Warn if the database drifted from the snapshot
 
 Dialects: default, postgres, mysql, mssql
