@@ -28,6 +28,7 @@ type DbContext struct {
 	breaker      *resiliency.CircuitBreaker
 	stdCtx       stdctx.Context
 	queryFilters map[string][]query.Node
+	noTracking   bool
 }
 
 // Option configures a DbContext.
@@ -61,6 +62,17 @@ func WithCircuitBreaker(threshold int, timeout time.Duration) Option {
 func WithContext(ctx stdctx.Context) Option {
 	return func(c *DbContext) {
 		c.stdCtx = ctx
+	}
+}
+
+// WithNoTracking makes single-entity reads (Find) skip the change tracker by
+// default, the equivalent of EF Core's QueryTrackingBehavior.NoTracking. Reads
+// then return detached entities that Save will not persist; a query can opt back
+// in per call with EntitySet.AsTracking. Collection queries (All) are already
+// non-tracking regardless of this setting; use AsTracking to track them.
+func WithNoTracking() Option {
+	return func(c *DbContext) {
+		c.noTracking = true
 	}
 }
 

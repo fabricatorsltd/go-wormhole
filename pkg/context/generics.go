@@ -22,7 +22,9 @@ func Find[T any](ctx stdctx.Context, c *DbContext, pk any) (*T, error) {
 	if err != nil {
 		return nil, err
 	}
-	c.tracker.Attach(dest)
+	if !c.noTracking {
+		c.tracker.Attach(dest)
+	}
 	return dest, nil
 }
 

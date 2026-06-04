@@ -12,6 +12,16 @@ import (
 	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
 )
 
+// trackMode is an EntitySet's per-query change-tracking choice. The zero value
+// defers to the path default and the DbContext setting.
+type trackMode int
+
+const (
+	trackDefault trackMode = iota // path default (Find tracks, All does not)
+	trackOff                      // NoTracking: never attach results
+	trackOn                       // AsTracking: attach results
+)
+
 // EntitySet provides a fluent API for querying and managing entities
 // of a single type through the DbContext.
 type EntitySet struct {
@@ -29,6 +39,47 @@ type EntitySet struct {
 	joins         []query.JoinSpec
 	includes      []string
 	ignoreFilters bool
+	tracking      trackMode
+}
+
+// NoTracking runs this query without attaching the result to the change
+// tracker, the equivalent of EF Core's AsNoTracking. The returned entities are
+// detached: Save will not persist later mutations to them, and they are not
+// retained in the identity map. Useful for read-only lookups. Chainable.
+//
+// Collection queries (All) are non-tracking by default, so this only changes
+// the single-entity Find paths; it also overrides a context-level AsTracking.
+func (s *EntitySet) NoTracking() *EntitySet {
+	s.tracking = trackOff
+	return s
+}
+
+// AsTracking attaches the query result to the change tracker so a later Save
+// persists mutations to it, the equivalent of EF Core's AsTracking. It is the
+// way to opt a collection query (All) into load-mutate-save, and to force
+// tracking on a Find when the context defaults to no-tracking. Chainable.
+//
+// For collection queries the destination must be *[]*T (a slice of pointers):
+// tracked entities need stable addresses, which a *[]T value slice cannot give.
+// All returns an error otherwise. Only the top-level results are tracked;
+// eager-loaded relations from Include are not.
+func (s *EntitySet) AsTracking() *EntitySet {
+	s.tracking = trackOn
+	return s
+}
+
+// trackFind reports whether a single-entity read should attach its result.
+// Find tracks by default unless the context opts out; explicit per-query modes
+// win over the context setting.
+func (s *EntitySet) trackFind() bool {
+	switch s.tracking {
+	case trackOn:
+		return true
+	case trackOff:
+		return false
+	default:
+		return !s.ctx.noTracking
+	}
 }
 
 // Set creates an EntitySet bound to the given destination.
@@ -86,7 +137,9 @@ func (s *EntitySet) Find(pk any) error {
 		if err != nil {
 			return err
 		}
-		s.ctx.tracker.Attach(s.dest)
+		if s.trackFind() {
+			s.ctx.tracker.Attach(s.dest)
+		}
 		return nil
 	}
 	return s.findFiltered(ctx, pk, filters)
@@ -120,7 +173,9 @@ func (s *EntitySet) findFiltered(ctx stdctx.Context, pk any, filters []query.Nod
 		return sql.ErrNoRows
 	}
 	reflect.ValueOf(s.dest).Elem().Set(slice.Index(0).Elem())
-	s.ctx.tracker.Attach(s.dest)
+	if s.trackFind() {
+		s.ctx.tracker.Attach(s.dest)
+	}
 	return nil
 }
 
@@ -233,6 +288,14 @@ func (s *EntitySet) Include(relations ...string) *EntitySet {
 // (must be *[]T or *[]*T). When Include was used, each named relation is
 // loaded and stitched onto the results before returning.
 func (s *EntitySet) All() error {
+	// Validate the destination shape before any query runs, so an AsTracking
+	// misuse fails fast instead of after the main query and every Include.
+	if s.tracking == trackOn {
+		if err := s.checkTrackableDest(); err != nil {
+			return err
+		}
+	}
+
 	q := s.buildQuery()
 
 	ctx := s.ctx.opCtx()
@@ -247,7 +310,49 @@ func (s *EntitySet) All() error {
 			return err
 		}
 	}
+
+	if s.tracking == trackOn {
+		s.attachResults()
+	}
 	return nil
+}
+
+// checkTrackableDest verifies AsTracking has a *[]*T destination. The tracker
+// keys entities by address, and only a slice of pointers gives each element a
+// stable one (a *[]T backing array can move on append/reslice).
+func (s *EntitySet) checkTrackableDest() error {
+	v := reflect.ValueOf(s.dest)
+	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Slice {
+		return fmt.Errorf("AsTracking requires a slice destination, got %s", v.Type())
+	}
+	if v.Elem().Type().Elem().Kind() != reflect.Ptr {
+		return fmt.Errorf("AsTracking requires *[]*T (a slice of pointers) so tracked entities have stable addresses, got %s", v.Type())
+	}
+	return nil
+}
+
+// attachResults tracks each element of a collection result as Unchanged, so a
+// later Save persists mutations (AsTracking on All). The destination shape was
+// already validated by checkTrackableDest.
+//
+// When a row is already tracked (same primary key, e.g. loaded by an earlier
+// Find), the identity map wins: the slice element is replaced with the tracked
+// instance rather than re-attached. That mirrors EF Core and avoids clobbering a
+// pending change with a fresh snapshot, which would silently drop the mutation.
+func (s *EntitySet) attachResults() {
+	slice := reflect.ValueOf(s.dest).Elem()
+	for i := 0; i < slice.Len(); i++ {
+		elem := slice.Index(i)
+		if elem.IsNil() {
+			continue
+		}
+		ptr := elem.Interface()
+		if existing, ok := s.ctx.tracker.Entry(ptr); ok {
+			elem.Set(reflect.ValueOf(existing.Entity))
+			continue
+		}
+		s.ctx.tracker.Attach(ptr)
+	}
 }
 
 // Delete performs a bulk DELETE against the underlying provider matching the
