@@ -77,6 +77,7 @@ wormhole database update
 | [07 — Architecture](docs/07-architecture.md) | Internals, data flows, design decisions |
 | [08 — Relationships](docs/08-relationships.md) | 1:1, 1:N, N:M declarations, eager loading with Include |
 | [09 — Global CLI Tool](docs/09-global-cli.md) | Entity Framework-like CLI experience |
+| [10 - Concurrency & Lifetime](docs/10-concurrency.md) | DbContext per request, what to share, thread-safety |
 
 ## Examples
 
