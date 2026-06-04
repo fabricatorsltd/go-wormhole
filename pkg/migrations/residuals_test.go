@@ -53,6 +53,32 @@ func TestPostgresDialect_MapColumnType_NoChurn(t *testing.T) {
 	}
 }
 
+// The same migration must render with whatever dialect it is applied through:
+// Postgres gets SERIAL/TIMESTAMPTZ, the default dialect AUTOINCREMENT/TIMESTAMP.
+// The Runner (used by `database update`) renders via NewBuilderWith(dialect), so
+// applying respects the selected dialect rather than a baked-in default.
+func TestSchemaBuilder_RespectsDialect(t *testing.T) {
+	up := func(b *migrations.SchemaBuilder) {
+		b.CreateTable("events",
+			migrations.ColumnDef{Name: "id", SQLType: "INTEGER", PrimaryKey: true, AutoIncr: true},
+			migrations.ColumnDef{Name: "at", SQLType: "TIMESTAMP"},
+		)
+	}
+
+	pg := migrations.NewBuilderWith(migrations.PostgresDialect{})
+	up(pg)
+	if pgSQL := pg.SQL(); !strings.Contains(pgSQL, "SERIAL") || !strings.Contains(pgSQL, "TIMESTAMPTZ") {
+		t.Errorf("postgres rendering not dialect-specific:\n%s", pgSQL)
+	}
+
+	def := migrations.NewBuilderWith(migrations.DefaultDialect{})
+	up(def)
+	defSQL := def.SQL()
+	if !strings.Contains(defSQL, "AUTOINCREMENT") || strings.Contains(defSQL, "TIMESTAMPTZ") {
+		t.Errorf("default rendering not dialect-specific:\n%s", defSQL)
+	}
+}
+
 // Residual 2: diffing against the schema rebuilt from existing migrations emits
 // an incremental AddColumn, not a full CreateTable.
 func TestRebuildFromMigrations_IncrementalDiff(t *testing.T) {

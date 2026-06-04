@@ -283,8 +283,6 @@ func cliDatabaseUpdate() {
 		os.Exit(1)
 	}
 
-	dir := cliDir()
-
 	db, err := sql.Open(driver, dsn)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
@@ -293,78 +291,28 @@ func cliDatabaseUpdate() {
 	defer db.Close()
 
 	ctx := stdctx.Background()
-	d := cliResolveDialect(driver)
 
-	if err := migrations.EnsureHistoryTable(ctx, db); err != nil {
-		fmt.Fprintf(os.Stderr, "Error ensuring history table: %v\n", err)
-		os.Exit(1)
-	}
+	// Apply the registered migrations through the Runner, which renders each
+	// migration's operations with the dialect selected for the target database.
+	// The schema is always built for the database actually being updated, never
+	// from a dialect baked into a generated .sql file at generation time.
+	runner := migrations.NewRunner(db, cliResolveDialect(driver))
 
-	applied, err := migrations.AppliedMigrations(ctx, db)
+	pending, err := runner.Pending(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading migration history: %v\n", err)
 		os.Exit(1)
 	}
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			fmt.Println("No migrations directory found.")
-			return
-		}
-		fmt.Fprintf(os.Stderr, "Error reading migrations directory: %v\n", err)
-		os.Exit(1)
-	}
-
-	var pending []string
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
-			id := strings.TrimSuffix(e.Name(), ".sql")
-			if !applied[id] {
-				pending = append(pending, e.Name())
-			}
-		}
-	}
-
 	if len(pending) == 0 {
 		fmt.Println("Database is up to date.")
 		return
 	}
 
-	for _, file := range pending {
-		id := strings.TrimSuffix(file, ".sql")
-
-		content, err := os.ReadFile(filepath.Join(dir, file))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading %s: %v\n", file, err)
-			os.Exit(1)
-		}
-
-		tx, err := db.BeginTx(ctx, nil)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error starting transaction: %v\n", err)
-			os.Exit(1)
-		}
-
-		for _, stmt := range migrations.SplitStatements(string(content)) {
-			if _, err := tx.ExecContext(ctx, stmt); err != nil {
-				_ = tx.Rollback()
-				fmt.Fprintf(os.Stderr, "Error executing migration %s: %v\n", id, err)
-				os.Exit(1)
-			}
-		}
-
-		if err := migrations.RecordMigration(ctx, tx, id, d); err != nil {
-			_ = tx.Rollback()
-			fmt.Fprintf(os.Stderr, "Error recording migration %s: %v\n", id, err)
-			os.Exit(1)
-		}
-
-		if err := tx.Commit(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error committing migration %s: %v\n", id, err)
-			os.Exit(1)
-		}
-
+	if err := runner.Up(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "Error applying migrations: %v\n", err)
+		os.Exit(1)
+	}
+	for _, id := range pending {
 		fmt.Printf("  Applied: %s\n", id)
 	}
 
