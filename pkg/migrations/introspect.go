@@ -11,8 +11,10 @@ import (
 // reusing Scaffold's introspection. It supports PostgreSQL (information_schema)
 // and SQLite (PRAGMA); MySQL/MSSQL are not yet supported (the introspection
 // query uses a Postgres-style placeholder) and return an error rather than a
-// misleading result. The migrations history table is excluded. The result is
-// comparable against a saved model snapshot to detect drift.
+// misleading result. On Postgres it reads the active schema (current_schema());
+// on SQLite, underscore-prefixed tables are skipped. The migrations history
+// table is excluded. The result is comparable against a saved model snapshot to
+// detect drift.
 func IntrospectSchema(ctx context.Context, db *sql.DB) (DatabaseSchema, error) {
 	tables, err := scaffoldTables(ctx, db)
 	if err != nil {
@@ -91,8 +93,9 @@ func (d Drift) String() string {
 // map to a different Go-type bucket, so dialect spelling differences (e.g.
 // TIMESTAMP vs "timestamp with time zone") do not raise false positives.
 // Nullability, defaults, and type length/precision are not compared (a
-// VARCHAR(50) -> VARCHAR(500) change is not drift). Output is sorted for stable,
-// reviewable reporting.
+// VARCHAR(50) -> VARCHAR(500) change is not drift), and text-family types
+// (text/varchar/json/uuid) share one bucket, so a change among them is not
+// flagged. Output is sorted for stable, reviewable reporting.
 func DetectDrift(snapshot, live DatabaseSchema) []Drift {
 	var drifts []Drift
 

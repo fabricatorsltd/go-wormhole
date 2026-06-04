@@ -49,10 +49,11 @@ type scaffoldCol struct {
 // scaffoldTables reads user tables from information_schema.
 // Falls back to sqlite_master for SQLite.
 func scaffoldTables(ctx context.Context, db *sql.DB) ([]string, error) {
-	// Try information_schema first (Postgres, MySQL)
+	// Try information_schema first (Postgres). Scope to the active schema so
+	// tables from other schemas (extensions, other tenants) are not picked up.
 	rows, err := db.QueryContext(ctx,
 		`SELECT table_name FROM information_schema.tables
-		 WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
+		 WHERE table_schema = current_schema()
 		   AND table_type = 'BASE TABLE'
 		 ORDER BY table_name`)
 	if err == nil {
@@ -91,7 +92,7 @@ func scaffoldColumns(ctx context.Context, db *sql.DB, table string) ([]scaffoldC
 	rows, err := db.QueryContext(ctx, `
 		SELECT column_name, data_type, is_nullable, column_default
 		FROM information_schema.columns
-		WHERE table_name = $1
+		WHERE table_name = $1 AND table_schema = current_schema()
 		ORDER BY ordinal_position`, table)
 	if err == nil {
 		defer rows.Close()
@@ -152,7 +153,8 @@ func primaryKeyCols(ctx context.Context, db *sql.DB, table string) map[string]bo
 		FROM information_schema.table_constraints tc
 		JOIN information_schema.key_column_usage kcu
 		  ON tc.constraint_name = kcu.constraint_name
-		WHERE tc.table_name = $1 AND tc.constraint_type = 'PRIMARY KEY'`, table)
+		WHERE tc.table_name = $1 AND tc.constraint_type = 'PRIMARY KEY'
+		  AND tc.table_schema = current_schema()`, table)
 	if err != nil {
 		return m
 	}
