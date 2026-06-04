@@ -52,57 +52,57 @@ type MigrationOp interface {
 
 // CreateTableOp creates a new table with the given columns.
 type CreateTableOp struct {
-	Table   string
-	Columns []ColumnDef
+	Table   string      `json:"table"`
+	Columns []ColumnDef `json:"columns"`
 }
 
 func (o CreateTableOp) Kind() OpKind { return OpCreateTable }
 
 // DropTableOp drops an existing table.
 type DropTableOp struct {
-	Table string
+	Table string `json:"table"`
 }
 
 func (o DropTableOp) Kind() OpKind { return OpDropTable }
 
 // AddColumnOp adds a column to an existing table.
 type AddColumnOp struct {
-	Table  string
-	Column ColumnDef
+	Table  string    `json:"table"`
+	Column ColumnDef `json:"column"`
 }
 
 func (o AddColumnOp) Kind() OpKind { return OpAddColumn }
 
 // DropColumnOp removes a column from an existing table.
 type DropColumnOp struct {
-	Table  string
-	Column string
+	Table  string `json:"table"`
+	Column string `json:"column"`
 }
 
 func (o DropColumnOp) Kind() OpKind { return OpDropColumn }
 
 // AlterColumnOp changes the type or constraints of an existing column.
 type AlterColumnOp struct {
-	Table  string
-	Column ColumnDef // new definition
+	Table  string    `json:"table"`
+	Column ColumnDef `json:"column"` // new definition
 }
 
 func (o AlterColumnOp) Kind() OpKind { return OpAlterColumn }
 
 // CreateIndexOp creates a secondary index.
 type CreateIndexOp struct {
-	Name    string
-	Table   string
-	Columns []string
-	Unique  bool
+	Name    string   `json:"name"`
+	Table   string   `json:"table"`
+	Columns []string `json:"columns"`
+	Unique  bool     `json:"unique,omitempty"`
 }
 
 func (o CreateIndexOp) Kind() OpKind { return OpCreateIndex }
 
 // DropIndexOp drops a secondary index.
 type DropIndexOp struct {
-	Name  string
-	Table string // required by MySQL/MSSQL DROP INDEX; optional for Postgres/SQLite
+	Name  string `json:"name"`
+	Table string `json:"table,omitempty"` // required by MySQL/MSSQL DROP INDEX; optional for Postgres/SQLite
 }
 
 func (o DropIndexOp) Kind() OpKind { return OpDropIndex }
@@ -119,7 +119,7 @@ func (o DropIndexOp) Kind() OpKind { return OpDropIndex }
 // Dialect type if a single migration has to support multiple
 // databases.
 type RawSQLOp struct {
-	SQL string
+	SQL string `json:"sql"`
 }
 
 func (o RawSQLOp) Kind() OpKind { return OpRawSQL }

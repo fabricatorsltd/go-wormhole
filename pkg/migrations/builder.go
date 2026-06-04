@@ -109,6 +109,10 @@ func (b *SchemaBuilder) Raw(sql string) {
 	b.ops = append(b.ops, RawSQLOp{SQL: sql})
 }
 
+// AddOp appends a pre-built operation, e.g. when replaying operations decoded
+// from a migration's JSON manifest.
+func (b *SchemaBuilder) AddOp(op MigrationOp) { b.ops = append(b.ops, op) }
+
 // Ops returns the accumulated operations.
 func (b *SchemaBuilder) Ops() []MigrationOp { return b.ops }
 

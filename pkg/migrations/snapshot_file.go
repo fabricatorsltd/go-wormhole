@@ -47,16 +47,23 @@ func normalizeSchema(schema DatabaseSchema) DatabaseSchema {
 	for name, ts := range schema.Tables {
 		nt := &TableSchema{Name: ts.Name, Columns: make(map[string]*ColumnDef, len(ts.Columns))}
 		for cn, c := range ts.Columns {
-			cc := *c
-			if cc.SQLType == "" && cc.GoType != nil {
-				cc.SQLType = GoTypeToSQL(cc.GoType)
-			}
-			cc.GoType = nil
+			cc := normalizeColumn(*c)
 			nt.Columns[cn] = &cc
 		}
 		out.Tables[name] = nt
 	}
 	return out
+}
+
+// normalizeColumn resolves a column's concrete SQLType (so it does not depend on
+// a runtime reflect.Type) and clears GoType, making it safe to serialize and
+// stable to diff on reload. Columns that already carry a SQLType are unchanged.
+func normalizeColumn(c ColumnDef) ColumnDef {
+	if c.SQLType == "" && c.GoType != nil {
+		c.SQLType = GoTypeToSQL(c.GoType)
+	}
+	c.GoType = nil
+	return c
 }
 
 // ScriptMigrations renders the given migrations as a cumulative SQL script for
