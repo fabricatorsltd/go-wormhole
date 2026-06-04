@@ -28,6 +28,20 @@ type Composite struct {
 
 func (Composite) nodeTag() {}
 
+// Subquery is a predicate whose right side is a nested SELECT. For OpIn/OpNotIn
+// it renders "Field IN (SELECT col FROM ... )" and Query must project exactly
+// one column; for OpExists/OpNotExists it renders "[NOT] EXISTS (SELECT 1 FROM
+// ... )" and Field is unused. The inner Query carries its own table and WHERE,
+// which may reference the outer table (a correlated subquery) via a column-ref
+// predicate.
+type Subquery struct {
+	Field string // outer column (OpIn/OpNotIn); unused for EXISTS
+	Op    Op
+	Query Query
+}
+
+func (Subquery) nodeTag() {}
+
 // Sort represents a single ORDER BY clause.
 //
 // When Case is non-nil it takes precedence: the compiler emits the CASE

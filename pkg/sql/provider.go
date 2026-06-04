@@ -115,7 +115,11 @@ func (p *Provider) CompositeKeysSupported() bool { return true }
 // SQLDB exposes the underlying *sql.DB for advanced operations.
 func (p *Provider) SQLDB() *sql.DB { return p.db }
 
-func (p *Provider) Capabilities() provider.Capabilities {
+func (p *Provider) Capabilities() provider.Capabilities { return sqlCapabilities() }
+
+// sqlCapabilities is the single source of truth for what the SQL backend can do
+// natively, shared by the Provider, its Tx, and the bulk-statement guards.
+func sqlCapabilities() provider.Capabilities {
 	return provider.Capabilities{
 		Transactions:     true,
 		Aggregations:     true,
@@ -124,6 +128,7 @@ func (p *Provider) Capabilities() provider.Capabilities {
 		Sorting:          true,
 		OffsetPagination: true,
 		SchemaMigrations: true,
+		Subqueries:       true,
 	}
 }
 
@@ -252,6 +257,9 @@ func (p *Provider) DeleteVersioned(ctx context.Context, meta *model.EntityMeta, 
 // Emits a single DELETE … WHERE … against the entity table.
 // Returns rowsAffected, or -1 if the driver cannot report it.
 func (p *Provider) DeleteWhere(ctx context.Context, meta *model.EntityMeta, q query.Query) (int64, error) {
+	if _, err := provider.ValidateQueryCapabilities(meta, sqlCapabilities(), q); err != nil {
+		return 0, err
+	}
 	c := p.compiler.DeleteWhere(meta, q)
 	p.logQuery(c)
 	var affected int64
@@ -523,6 +531,9 @@ func (t *sqlTx) DeleteVersioned(ctx context.Context, meta *model.EntityMeta, pkV
 
 // DeleteWhere mirrors Provider.DeleteWhere for in-transaction bulk deletes.
 func (t *sqlTx) DeleteWhere(ctx context.Context, meta *model.EntityMeta, q query.Query) (int64, error) {
+	if _, err := provider.ValidateQueryCapabilities(meta, sqlCapabilities(), q); err != nil {
+		return 0, err
+	}
 	c := t.compiler.DeleteWhere(meta, q)
 	t.logQuery(c)
 	res, err := t.tx.ExecContext(ctx, c.SQL, c.Params...)
@@ -555,6 +566,9 @@ func marshalJSONAssignments(meta *model.EntityMeta, sets []query.Assignment) []q
 }
 
 func (p *Provider) UpdateWhere(ctx context.Context, meta *model.EntityMeta, q query.Query, sets []query.Assignment) (int64, error) {
+	if _, err := provider.ValidateQueryCapabilities(meta, sqlCapabilities(), q); err != nil {
+		return 0, err
+	}
 	sets = marshalJSONAssignments(meta, sets)
 	c := p.compiler.UpdateWhere(meta, q, sets)
 	p.logQuery(c)
@@ -576,6 +590,9 @@ func (p *Provider) UpdateWhere(ctx context.Context, meta *model.EntityMeta, q qu
 }
 
 func (t *sqlTx) UpdateWhere(ctx context.Context, meta *model.EntityMeta, q query.Query, sets []query.Assignment) (int64, error) {
+	if _, err := provider.ValidateQueryCapabilities(meta, sqlCapabilities(), q); err != nil {
+		return 0, err
+	}
 	sets = marshalJSONAssignments(meta, sets)
 	c := t.compiler.UpdateWhere(meta, q, sets)
 	t.logQuery(c)
@@ -599,15 +616,7 @@ func (t *sqlTx) Find(ctx context.Context, meta *model.EntityMeta, pkValue any, d
 
 func (t *sqlTx) Execute(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error {
 	var err error
-	q, err = provider.ValidateQueryCapabilities(meta, provider.Capabilities{
-		Transactions:     true,
-		Aggregations:     true,
-		NestedFilters:    true,
-		PartialUpdate:    true,
-		Sorting:          true,
-		OffsetPagination: true,
-		SchemaMigrations: true,
-	}, q)
+	q, err = provider.ValidateQueryCapabilities(meta, sqlCapabilities(), q)
 	if err != nil {
 		return err
 	}

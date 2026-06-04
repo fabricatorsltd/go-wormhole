@@ -4,21 +4,23 @@ package query
 type Op int
 
 const (
-	OpEq       Op = iota // =
-	OpNeq                // !=
-	OpGt                 // >
-	OpGte                // >=
-	OpLt                 // <
-	OpLte                // <=
-	OpIn                 // IN
-	OpLike               // LIKE / contains
-	OpIsNil              // IS NULL
-	OpIsNotNil           // IS NOT NULL
-	OpNotIn              // NOT IN
+	OpEq        Op = iota // =
+	OpNeq                 // !=
+	OpGt                  // >
+	OpGte                 // >=
+	OpLt                  // <
+	OpLte                 // <=
+	OpIn                  // IN
+	OpLike                // LIKE / contains
+	OpIsNil               // IS NULL
+	OpIsNotNil            // IS NOT NULL
+	OpNotIn               // NOT IN
+	OpExists              // EXISTS (subquery)
+	OpNotExists           // NOT EXISTS (subquery)
 )
 
 func (o Op) String() string {
-	names := [...]string{"=", "!=", ">", ">=", "<", "<=", "IN", "LIKE", "IS NULL", "IS NOT NULL", "NOT IN"}
+	names := [...]string{"=", "!=", ">", ">=", "<", "<=", "IN", "LIKE", "IS NULL", "IS NOT NULL", "NOT IN", "EXISTS", "NOT EXISTS"}
 	if int(o) < len(names) {
 		return names[o]
 	}

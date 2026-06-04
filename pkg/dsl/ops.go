@@ -64,6 +64,36 @@ func NotIn[B any, F any](base *B, fieldPtr *F, vals ...F) Condition {
 	return Condition{Field: fi.Column, Op: query.OpNotIn, Value: items, Table: tm.table}
 }
 
+// InSub builds a "field IN (subquery)" predicate. The subquery is a built
+// query.Query and must project exactly one column via its Select.
+//
+//	orders := query.From("orders").Select("user_id").
+//	    Filter(dsl.Gt(o, &o.Total, 100)).Build()
+//	db.Set(&users).Where(dsl.InSub(u, &u.ID, orders)).All()
+func InSub[B any, F any](base *B, fieldPtr *F, sub query.Query) query.Node {
+	fi := resolve(base, fieldPtr)
+	return query.Subquery{Field: fi.Column, Op: query.OpIn, Query: sub}
+}
+
+// NotInSub builds a "field NOT IN (subquery)" predicate. Note that NOT IN
+// against a subquery yielding any NULL matches no rows, per SQL three-valued
+// logic.
+func NotInSub[B any, F any](base *B, fieldPtr *F, sub query.Query) query.Node {
+	fi := resolve(base, fieldPtr)
+	return query.Subquery{Field: fi.Column, Op: query.OpNotIn, Query: sub}
+}
+
+// Exists builds an "EXISTS (subquery)" predicate. The subquery's WHERE may
+// correlate to the outer table via a column-ref predicate (dsl.JoinEq).
+func Exists(sub query.Query) query.Node {
+	return query.Subquery{Op: query.OpExists, Query: sub}
+}
+
+// NotExists builds a "NOT EXISTS (subquery)" predicate.
+func NotExists(sub query.Query) query.Node {
+	return query.Subquery{Op: query.OpNotExists, Query: sub}
+}
+
 // Like builds a LIKE predicate (raw pattern, e.g. "%alice%").
 func Like[B any](base *B, fieldPtr *string, pattern string) Condition {
 	fi := resolve(base, fieldPtr)

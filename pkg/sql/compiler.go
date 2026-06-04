@@ -830,6 +830,48 @@ func (c *Compiler) compileNode(b *strings.Builder, params *[]any, node query.Nod
 		c.compilePredicate(b, params, n)
 	case query.Composite:
 		c.compileComposite(b, params, n)
+	case query.Subquery:
+		c.compileSubquery(b, params, n)
+	}
+}
+
+// compileSubquery renders an IN / NOT IN / EXISTS / NOT EXISTS predicate whose
+// right side is a nested SELECT. The sub-SELECT is compiled into the same params
+// slice, so placeholder numbering stays continuous across dialects.
+func (c *Compiler) compileSubquery(b *strings.Builder, params *[]any, sq query.Subquery) {
+	switch sq.Op {
+	case query.OpExists, query.OpNotExists:
+		if sq.Op == query.OpNotExists {
+			b.WriteString("NOT ")
+		}
+		b.WriteString("EXISTS (")
+		c.writeSubSelect(b, params, sq.Query, "1")
+	default: // OpIn / OpNotIn
+		c.writeColumnRef(b, "", sq.Field)
+		if sq.Op == query.OpNotIn {
+			b.WriteString(" NOT IN (")
+		} else {
+			b.WriteString(" IN (")
+		}
+		col := "1"
+		if len(sq.Query.Columns) > 0 {
+			col = c.quote(sq.Query.Columns[0])
+		}
+		c.writeSubSelect(b, params, sq.Query, col)
+	}
+	b.WriteString(")")
+}
+
+// writeSubSelect emits "SELECT <selectExpr> FROM <table> [WHERE ...]" for a
+// nested query, appending its parameters to the shared slice.
+func (c *Compiler) writeSubSelect(b *strings.Builder, params *[]any, q query.Query, selectExpr string) {
+	b.WriteString("SELECT ")
+	b.WriteString(selectExpr)
+	b.WriteString(" FROM ")
+	b.WriteString(c.quote(q.EntityName))
+	if q.Where != nil {
+		b.WriteString(" WHERE ")
+		c.compileNode(b, params, q.Where)
 	}
 }
 

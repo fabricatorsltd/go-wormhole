@@ -180,6 +180,7 @@ type Capabilities struct {
 	CursorPagination bool
 	SchemaMigrations bool
 	SchemaEvolution  bool
+	Subqueries       bool
 }
 
 // CapabilityReporter is an optional interface for providers that
@@ -209,6 +210,9 @@ func ValidateQueryCapabilities(meta *model.EntityMeta, c Capabilities, q query.Q
 	if len(q.Includes) > 0 && !c.Aggregations {
 		return q, fmt.Errorf("provider does not support relation includes")
 	}
+	if err := validateSubqueries(c, q.Where); err != nil {
+		return q, err
+	}
 	if (len(q.GroupBy) > 0 || len(q.Aggregates) > 0 || q.Having != nil) && !c.Aggregations {
 		return q, fmt.Errorf("provider does not support aggregations")
 	}
@@ -216,6 +220,33 @@ func ValidateQueryCapabilities(meta *model.EntityMeta, c Capabilities, q query.Q
 		return q, nil
 	}
 	return normalizeAggregateQuery(meta, q)
+}
+
+// validateSubqueries walks a WHERE tree and rejects subquery predicates on a
+// provider that does not report Subqueries support, and IN/NOT IN subqueries
+// that do not project exactly one column. Recurses into composites and nested
+// subqueries so a buried node cannot slip through (and silently vanish in a
+// backend that does not understand the node).
+func validateSubqueries(c Capabilities, node query.Node) error {
+	switch n := node.(type) {
+	case query.Subquery:
+		if !c.Subqueries {
+			return fmt.Errorf("provider does not support subquery filters")
+		}
+		if n.Op == query.OpIn || n.Op == query.OpNotIn {
+			if len(n.Query.Columns) != 1 {
+				return fmt.Errorf("IN subquery must project exactly one column, got %d", len(n.Query.Columns))
+			}
+		}
+		return validateSubqueries(c, n.Query.Where)
+	case query.Composite:
+		for _, child := range n.Children {
+			if err := validateSubqueries(c, child); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func normalizeAggregateQuery(meta *model.EntityMeta, q query.Query) (query.Query, error) {
