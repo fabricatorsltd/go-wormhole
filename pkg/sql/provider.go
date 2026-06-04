@@ -650,6 +650,12 @@ func structToMap(meta *model.EntityMeta, entity any) map[string]any {
 		}
 		m[f.FieldName] = v
 	}
+	// In a single-table hierarchy, the discriminator is owned by the mapping,
+	// not the caller: force this type's value so every write is correctly tagged
+	// regardless of what the struct field held.
+	if meta.Discriminator != nil {
+		m[meta.Discriminator.FieldName] = meta.DiscriminatorValue
+	}
 	return m
 }
 

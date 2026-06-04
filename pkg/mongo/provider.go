@@ -86,6 +86,9 @@ func (p *Provider) Close() error {
 }
 
 func (p *Provider) Insert(ctx context.Context, meta *model.EntityMeta, entity any) (any, error) {
+	if meta.Discriminator != nil {
+		return nil, fmt.Errorf("mongo: single-table hierarchy (discriminator) is supported only on SQL providers")
+	}
 	doc := toDocument(meta, entity)
 	res, err := p.collection(meta).InsertOne(ctx, doc)
 	if err != nil {
@@ -113,6 +116,9 @@ func (p *Provider) Delete(ctx context.Context, meta *model.EntityMeta, pkValue a
 }
 
 func (p *Provider) Find(ctx context.Context, meta *model.EntityMeta, pkValue any, dest any) error {
+	if meta.Discriminator != nil {
+		return fmt.Errorf("mongo: single-table hierarchy (discriminator) is supported only on SQL providers")
+	}
 	var raw bson.M
 	err := p.collection(meta).FindOne(ctx, bson.D{{Key: "_id", Value: pkValue}}).Decode(&raw)
 	if err != nil {

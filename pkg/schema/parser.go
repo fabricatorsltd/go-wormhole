@@ -59,6 +59,9 @@ func ParseType(t reflect.Type) *model.EntityMeta {
 	}
 	var navs []navField
 
+	// Table-per-hierarchy directives, resolved after the field index is built.
+	var tableOverride, discColumn, discValue string
+
 	for _, fm := range parsed {
 		sf, _ := t.FieldByName(fm.Name)
 		// A `json`-tagged field is stored as a JSON column, even when its Go
@@ -72,6 +75,17 @@ func ParseType(t reflect.Type) *model.EntityMeta {
 		col := fm.Get("column")
 		if col == "" {
 			col = util.ToSnake(sf.Name)
+		}
+
+		// table:<name> shares this type's table with sibling types (first wins).
+		if t := fm.Get("table"); t != "" && tableOverride == "" {
+			tableOverride = t
+		}
+		// discriminator:<value> marks the single-table type column and this
+		// type's value.
+		if d := fm.Get("discriminator"); d != "" {
+			discColumn = col
+			discValue = d
 		}
 
 		field := model.FieldMeta{
@@ -120,6 +134,15 @@ func ParseType(t reflect.Type) *model.EntityMeta {
 
 	meta.BuildIndex()
 
+	// Resolve table-per-hierarchy directives now that the field index exists.
+	if tableOverride != "" {
+		meta.Name = tableOverride
+	}
+	if discColumn != "" {
+		meta.Discriminator = meta.FieldByColumn(discColumn)
+		meta.DiscriminatorValue = discValue
+	}
+
 	for _, nf := range navs {
 		if rel, ok := parseRelation(meta, nf.name, nf.typ, nf.raw); ok {
 			meta.Relations = append(meta.Relations, rel)
@@ -127,7 +150,13 @@ func ParseType(t reflect.Type) *model.EntityMeta {
 	}
 
 	cache.Store(t, meta)
-	nameCache.Store(meta.Name, meta)
+	// Single-table-hierarchy types share one table name, so the by-name cache
+	// would let one subtype evict another. Only the per-type cache (keyed by
+	// reflect.Type) is authoritative for them; callers that need a discriminated
+	// type pass its meta directly rather than resolving it by name.
+	if meta.Discriminator == nil {
+		nameCache.Store(meta.Name, meta)
+	}
 	return meta
 }
 

@@ -186,6 +186,9 @@ func (s *EntitySet) findFiltered(ctx stdctx.Context, pk []any, filters []query.N
 	for i, k := range keys {
 		preds = append(preds, query.Predicate{Field: k.Column, Op: query.OpEq, Value: pk[i]})
 	}
+	if d := s.discriminatorPredicate(); d != nil {
+		preds = append(preds, d)
+	}
 	preds = append(preds, filters...)
 
 	b := query.From(s.meta.Name)
@@ -323,6 +326,21 @@ func (s *EntitySet) projectedColumns() []string {
 		}
 	}
 	return cols
+}
+
+// discriminatorPredicate returns the equality predicate that scopes a query to
+// this type's rows in a single-table hierarchy, or nil when the type is not part
+// of one. It is applied to every read and write-by-query, independent of
+// IgnoreFilters, so a subtype can never reach a sibling type's rows.
+func (s *EntitySet) discriminatorPredicate() query.Node {
+	if s.meta.Discriminator == nil {
+		return nil
+	}
+	return query.Predicate{
+		Field: s.meta.Discriminator.Column,
+		Op:    query.OpEq,
+		Value: s.meta.DiscriminatorValue,
+	}
 }
 
 // canonicalColumn resolves a field or column name to its storage column,
@@ -665,15 +683,21 @@ func (s *EntitySet) buildQuery() query.Query {
 	for _, cs := range s.caseSelects {
 		b.SelectCase(cs.Expr, cs.Alias)
 	}
-	// Apply the caller's predicates plus any registered query filters, ANDed
-	// together. Filters are keyed on the table actually queried (tableName), so
-	// a From() override onto a registered, filtered table is still scoped rather
-	// than reading across the filter. A local copy avoids mutating s.preds
-	// (buildQuery runs more than once, e.g. All then ToSQL).
-	preds := s.preds
+	// Apply the discriminator predicate (single-table hierarchy), the caller's
+	// predicates, and any registered query filters, ANDed together. The
+	// discriminator is a correctness invariant, not a scoping convenience, so it
+	// is applied unconditionally, even under IgnoreFilters. Filters are keyed on
+	// the table actually queried (tableName), so a From() override onto a
+	// registered, filtered table is still scoped. A local copy avoids mutating
+	// s.preds (buildQuery runs more than once, e.g. All then ToSQL).
+	var preds []query.Node
+	if d := s.discriminatorPredicate(); d != nil {
+		preds = append(preds, d)
+	}
+	preds = append(preds, s.preds...)
 	if !s.ignoreFilters {
 		if f := s.ctx.filtersFor(tableName); len(f) > 0 {
-			preds = append(append([]query.Node{}, s.preds...), f...)
+			preds = append(preds, f...)
 		}
 	}
 	if len(preds) > 0 {

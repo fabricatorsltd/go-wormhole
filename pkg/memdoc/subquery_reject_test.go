@@ -110,6 +110,30 @@ func TestMemDoc_RejectsCaseProjection(t *testing.T) {
 	}
 }
 
+type tphDoc struct {
+	ID   int    `db:"column:id;primary_key;table:shared_tph"`
+	Kind string `db:"column:kind;discriminator:a"`
+}
+
+// Single-table hierarchy is SQL-only: a document store rejects writing or
+// finding a discriminated type rather than silently storing it untagged.
+func TestMemDoc_RejectsDiscriminatedType(t *testing.T) {
+	p := memdoc.New()
+	if err := p.Open(t.Context(), ""); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+
+	meta := schema.Parse(&tphDoc{})
+	if _, err := p.Insert(t.Context(), meta, &tphDoc{ID: 1}); err == nil || !strings.Contains(err.Error(), "hierarchy") {
+		t.Fatalf("Insert of a discriminated type should be rejected, got %v", err)
+	}
+	var out tphDoc
+	if err := p.Find(t.Context(), meta, 1, &out); err == nil || !strings.Contains(err.Error(), "hierarchy") {
+		t.Fatalf("Find of a discriminated type should be rejected, got %v", err)
+	}
+}
+
 // A CASE expression in a WHERE predicate must also be rejected on a document
 // store, not silently dropped (the guard walks the WHERE tree).
 func TestMemDoc_RejectsCaseInWhere(t *testing.T) {

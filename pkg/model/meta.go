@@ -76,7 +76,16 @@ type EntityMeta struct {
 	PrimaryKeys []*FieldMeta // composite PK fields
 	PrimaryKey  *FieldMeta   // shortcut to the first PK field (common case)
 	Version     *FieldMeta   // optimistic-concurrency version column, if any
-	fieldIndex  map[string]int
+
+	// Discriminator is the column that identifies the concrete type in a
+	// single-table (table-per-hierarchy) mapping; DiscriminatorValue is this
+	// type's value. When set, the type shares its table with sibling types: the
+	// value is forced on write and an equality predicate scopes every read and
+	// write-by-query to this type's rows.
+	Discriminator      *FieldMeta
+	DiscriminatorValue string
+
+	fieldIndex map[string]int
 }
 
 // Relation returns relationship metadata by Go navigation field name.

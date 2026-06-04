@@ -88,6 +88,9 @@ func (p *Provider) Close() error {
 
 func (p *Provider) Insert(ctx context.Context, meta *model.EntityMeta, entity any) (any, error) {
 	_ = ctx
+	if meta.Discriminator != nil {
+		return nil, fmt.Errorf("memdoc: single-table hierarchy (discriminator) is supported only on SQL providers")
+	}
 	pkField := meta.PrimaryKey
 	if pkField == nil {
 		return nil, ErrMissingPrimaryKey
@@ -166,6 +169,9 @@ func (p *Provider) Delete(ctx context.Context, meta *model.EntityMeta, pkValue a
 
 func (p *Provider) Find(ctx context.Context, meta *model.EntityMeta, pkValue any, dest any) error {
 	_ = ctx
+	if meta.Discriminator != nil {
+		return fmt.Errorf("memdoc: single-table hierarchy (discriminator) is supported only on SQL providers")
+	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	p.ensureOpen()

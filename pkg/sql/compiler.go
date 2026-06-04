@@ -599,7 +599,9 @@ func (c *Compiler) Update(meta *model.EntityMeta, values map[string]any, changed
 	if meta.Version != nil {
 		where.WriteString(fmt.Sprintf(" AND %s = %s", c.quote(meta.Version.Column), c.ph(idx)))
 		params = append(params, values[meta.Version.FieldName])
+		idx++
 	}
+	c.writeDiscriminator(&where, &params, meta, idx)
 
 	sql := fmt.Sprintf("UPDATE %s SET %s WHERE %s",
 		c.quote(meta.Name),
@@ -613,9 +615,26 @@ func (c *Compiler) Update(meta *model.EntityMeta, values map[string]any, changed
 func (c *Compiler) Delete(meta *model.EntityMeta, pkValue any) Compiled {
 	var w strings.Builder
 	var params []any
-	c.writeKeyWhere(&w, &params, meta, pkValue, 1)
+	idx := c.writeKeyWhere(&w, &params, meta, pkValue, 1)
+	c.writeDiscriminator(&w, &params, meta, idx)
 	sql := fmt.Sprintf("DELETE FROM %s WHERE %s", c.quote(meta.Name), w.String())
 	return Compiled{SQL: sql, Params: params}
+}
+
+// writeDiscriminator appends " AND <disc> = ?" to a key-based WHERE so a write
+// or lookup in a single-table hierarchy is scoped to this type's rows, and never
+// reaches a sibling type even when the key was supplied on a stub entity.
+// Returns the next placeholder index.
+func (c *Compiler) writeDiscriminator(w *strings.Builder, params *[]any, meta *model.EntityMeta, startIdx int) int {
+	if meta.Discriminator == nil {
+		return startIdx
+	}
+	w.WriteString(" AND ")
+	w.WriteString(c.quote(meta.Discriminator.Column))
+	w.WriteString(" = ")
+	w.WriteString(c.ph(startIdx))
+	*params = append(*params, meta.DiscriminatorValue)
+	return startIdx + 1
 }
 
 // keyColumns returns the entity's primary-key columns in declaration order,
@@ -684,6 +703,7 @@ func (c *Compiler) DeleteVersioned(meta *model.EntityMeta, pkValue, version any)
 	w.WriteString(" = ")
 	w.WriteString(c.ph(idx))
 	params = append(params, version)
+	c.writeDiscriminator(&w, &params, meta, idx+1)
 	sql := fmt.Sprintf("DELETE FROM %s WHERE %s", c.quote(meta.Name), w.String())
 	return Compiled{SQL: sql, Params: params}
 }
@@ -754,7 +774,10 @@ func (c *Compiler) FindByPK(meta *model.EntityMeta, pkValue any) Compiled {
 	b.WriteString(" FROM ")
 	b.WriteString(c.quote(meta.Name))
 	b.WriteString(" WHERE ")
-	c.writeKeyWhere(&b, &params, meta, pkValue, 1)
+	idx := c.writeKeyWhere(&b, &params, meta, pkValue, 1)
+	// Single-table hierarchy: scope the lookup to this type's rows so a key that
+	// belongs to a sibling type is not returned and scanned into the wrong struct.
+	c.writeDiscriminator(&b, &params, meta, idx)
 	if !c.UseTOP {
 		b.WriteString(" LIMIT 1")
 	}

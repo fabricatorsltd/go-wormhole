@@ -84,6 +84,12 @@ func Register(v any) {
 			if vals := parsedTags["column"]; len(vals) > 0 {
 				col = vals[0]
 			}
+			// A table: override (single-table hierarchy) renames the source
+			// table, so qualified predicates match the real table, not the
+			// struct-derived name.
+			if vals := parsedTags["table"]; len(vals) > 0 && vals[0] != "" {
+				tm.table = vals[0]
+			}
 		}
 
 		fi := fieldInfo{
