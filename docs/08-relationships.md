@@ -8,8 +8,8 @@ eager-loads related rows with `Include`.
 Current scope:
 
 - **1:1, 1:N, belongs-to**: parsed, foreign keys generated, eager loading works.
-- **N:M**: parsed and foreign-key aware, but eager loading via `Include` is not
-  yet implemented (it returns an error).
+- **N:M**: parsed, foreign-key aware, and eager loading via `Include` works
+  (loaded through the join table in a second batched query).
 - **Cascade delete** is not yet implemented. Foreign-key fix-up and parent-before-child
   insert ordering on `Save` are.
 
@@ -95,8 +95,8 @@ type Course struct {
 ```
 
 For N:M, `ref:` and `fk:` name the owner and target columns *in the join table*.
-Defaults are the snake_case type names plus `_id`. Eager loading of N:M is not
-yet supported.
+Defaults are the snake_case type names plus `_id`. `Include` loads N:M relations
+through the join table (one query for the link rows, one for the targets).
 
 ## Eager Loading with `Include`
 

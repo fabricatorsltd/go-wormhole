@@ -149,27 +149,54 @@ type mCourse struct {
 	Title string `db:"column:title"`
 }
 
-func TestE2E_Include_ManyToManyUnsupported(t *testing.T) {
+func TestE2E_Include_ManyToMany(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
-	if _, err := db.Exec(`CREATE TABLE "m_student" ("id" INTEGER PRIMARY KEY AUTOINCREMENT)`); err != nil {
-		t.Fatal(err)
+	stmts := []string{
+		`CREATE TABLE "m_student" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "name" TEXT NOT NULL)`,
+		`CREATE TABLE "m_course" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "title" TEXT NOT NULL)`,
+		`CREATE TABLE "enrollments" ("student_id" INTEGER NOT NULL, "course_id" INTEGER NOT NULL)`,
+		`INSERT INTO "m_student" ("id","name") VALUES (1,'Alice'),(2,'Bob')`,
+		`INSERT INTO "m_course" ("id","title") VALUES (1,'Math'),(2,'Science'),(3,'Art')`,
+		// Alice -> Math, Science; Bob -> Science. (Art is unattended.)
+		`INSERT INTO "enrollments" ("student_id","course_id") VALUES (1,1),(1,2),(2,2)`,
 	}
-	if _, err := db.Exec(`INSERT INTO "m_student" ("id") VALUES (1)`); err != nil {
-		t.Fatal(err)
+	for _, s := range stmts {
+		if _, err := db.Exec(s); err != nil {
+			t.Fatalf("setup %q: %v", s, err)
+		}
 	}
 
 	ctx := wctx.New(wsql.New(db))
 	defer ctx.Close()
 
 	var students []*mStudent
-	err = ctx.Set(&students).Include("Courses").All()
-	if err == nil || !strings.Contains(err.Error(), "many-to-many") {
-		t.Fatalf("want many-to-many unsupported error, got %v", err)
+	if err := ctx.Set(&students).Include("Courses").OrderBy("id", 0).All(); err != nil {
+		t.Fatal(err)
+	}
+	if len(students) != 2 {
+		t.Fatalf("students: got %d, want 2", len(students))
+	}
+
+	// Order of joined rows is not guaranteed, so compare as sets.
+	titleSet := func(s *mStudent) map[string]bool {
+		out := map[string]bool{}
+		for _, c := range s.Courses {
+			out[c.Title] = true
+		}
+		return out
+	}
+	alice := titleSet(students[0])
+	if len(alice) != 2 || !alice["Math"] || !alice["Science"] {
+		t.Errorf("Alice courses: got %v, want {Math, Science}", alice)
+	}
+	bob := titleSet(students[1])
+	if len(bob) != 1 || !bob["Science"] {
+		t.Errorf("Bob courses: got %v, want {Science}", bob)
 	}
 }
 
@@ -185,6 +212,57 @@ type widthOrder struct {
 	ID     int     `db:"column:id;primary_key;auto_increment"`
 	UserID int     `db:"column:user_id"`
 	Total  float64 `db:"column:total"`
+}
+
+type mTag struct {
+	Code  string `db:"column:code;primary_key"` // string PK, not "id"
+	Label string `db:"column:label"`
+}
+
+type mPost struct {
+	ID   int     `db:"column:id;primary_key;auto_increment"`
+	Tags []*mTag `db:"join:post_tags;ref:post_id;fk:tag_code"`
+}
+
+// N:M where the target's primary key is a non-"id" string column, proving the
+// target PK is resolved from the model, not assumed to be "id".
+func TestE2E_Include_ManyToMany_NonIDStringPK(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	for _, s := range []string{
+		`CREATE TABLE "m_post" ("id" INTEGER PRIMARY KEY AUTOINCREMENT)`,
+		`CREATE TABLE "m_tag" ("code" TEXT PRIMARY KEY, "label" TEXT NOT NULL)`,
+		`CREATE TABLE "post_tags" ("post_id" INTEGER NOT NULL, "tag_code" TEXT NOT NULL)`,
+		`INSERT INTO "m_post" ("id") VALUES (1)`,
+		`INSERT INTO "m_tag" ("code","label") VALUES ('go','Go'),('db','Database')`,
+		`INSERT INTO "post_tags" ("post_id","tag_code") VALUES (1,'go'),(1,'db')`,
+	} {
+		if _, err := db.Exec(s); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ctx := wctx.New(wsql.New(db))
+	defer ctx.Close()
+
+	var posts []*mPost
+	if err := ctx.Set(&posts).Include("Tags").All(); err != nil {
+		t.Fatal(err)
+	}
+	if len(posts) != 1 || len(posts[0].Tags) != 2 {
+		t.Fatalf("post tags: got %d posts / %d tags, want 1/2", len(posts), len(posts[0].Tags))
+	}
+	got := map[string]bool{}
+	for _, tag := range posts[0].Tags {
+		got[tag.Code] = true
+	}
+	if !got["go"] || !got["db"] {
+		t.Errorf("tags: got %v, want go+db", got)
+	}
 }
 
 func TestE2E_Include_IntegerWidthMismatch(t *testing.T) {

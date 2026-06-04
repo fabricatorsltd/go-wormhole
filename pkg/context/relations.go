@@ -19,20 +19,21 @@ import (
 //  3. Group the children by their link key and assign them onto each parent's
 //     navigation field via reflection.
 //
-// One-to-one, one-to-many and belongs-to are supported. Many-to-many requires a
-// join-table hop and is not yet supported.
+// One-to-one, one-to-many and belongs-to load with a single batched query;
+// many-to-many takes a second hop through the join table.
 func (s *EntitySet) loadInclude(ctx stdctx.Context, name string) error {
 	rel := s.meta.Relation(name)
 	if rel == nil {
 		return fmt.Errorf("Include(%q): %q has no relation %q", name, s.meta.Name, name)
 	}
-	if rel.Kind == model.RelationManyToMany {
-		return fmt.Errorf("Include(%q): many-to-many eager loading is not yet supported", name)
-	}
 
 	parents := derefSlice(s.dest)
 	if !parents.IsValid() || parents.Len() == 0 {
 		return nil
+	}
+
+	if rel.Kind == model.RelationManyToMany {
+		return s.loadManyToMany(ctx, name, rel, parents)
 	}
 
 	childMeta := schema.ParseType(rel.Target)
@@ -114,6 +115,144 @@ func (s *EntitySet) loadInclude(ctx stdctx.Context, name string) error {
 		if err := assignNav(addressableStruct(parent), rel.Field, matches, collection); err != nil {
 			return fmt.Errorf("Include(%q): %w", name, err)
 		}
+	}
+	return nil
+}
+
+// loadManyToMany eager-loads a many-to-many relation via its join table:
+//  1. collect the owners' keys,
+//  2. read (owner, target) pairs from the join table for those keys,
+//  3. load the targets referenced by those pairs,
+//  4. stitch the targets onto each owner's navigation slice.
+//
+// The join table need not be a registered Go entity: a two-column row type is
+// synthesized to scan the link rows.
+func (s *EntitySet) loadManyToMany(ctx stdctx.Context, name string, rel *model.Relation, parents reflect.Value) error {
+	childMeta := schema.ParseType(rel.Target)
+
+	// The target is matched on its real primary key, resolved here rather than
+	// assuming the "id" convention the parser defaults to.
+	targetPKCol := rel.ForeignKey
+	if childMeta.PrimaryKey != nil {
+		targetPKCol = childMeta.PrimaryKey.Column
+	}
+
+	ownerKeyField := fieldNameForColumn(s.meta, rel.LocalKey)
+	targetKeyField := fieldNameForColumn(childMeta, targetPKCol)
+	ownerKeyType := goTypeOfColumn(s.meta, rel.LocalKey)
+	targetKeyType := goTypeOfColumn(childMeta, targetPKCol)
+	if ownerKeyField == "" || targetKeyField == "" || ownerKeyType == nil || targetKeyType == nil {
+		return fmt.Errorf("Include(%q): cannot resolve many-to-many link columns", name)
+	}
+
+	// 1. Distinct owner keys.
+	ownerSeen := map[any]struct{}{}
+	var ownerKeys []any
+	for i := 0; i < parents.Len(); i++ {
+		v := fieldValue(parents.Index(i), ownerKeyField)
+		if !v.IsValid() {
+			continue
+		}
+		k := normalizeKey(v)
+		if _, ok := ownerSeen[k]; ok {
+			continue
+		}
+		ownerSeen[k] = struct{}{}
+		ownerKeys = append(ownerKeys, v.Interface())
+	}
+	if len(ownerKeys) == 0 {
+		return nil
+	}
+
+	// 2. Join rows: a synthetic two-column row (Local, Foreign) scanned from the
+	// join table where the owner column is in the collected keys.
+	joinRowType := reflect.StructOf([]reflect.StructField{
+		{Name: "Local", Type: ownerKeyType},
+		{Name: "Foreign", Type: targetKeyType},
+	})
+	joinMeta := &model.EntityMeta{
+		Name: rel.JoinTable,
+		Fields: []model.FieldMeta{
+			{FieldName: "Local", Column: rel.JoinLocalKey, GoType: ownerKeyType},
+			{FieldName: "Foreign", Column: rel.JoinForeignKey, GoType: targetKeyType},
+		},
+	}
+	joinMeta.BuildIndex()
+	joinRows := reflect.New(reflect.SliceOf(joinRowType)) // *[]joinRow
+	jq := query.Query{
+		EntityName: rel.JoinTable,
+		Where:      query.Predicate{Field: rel.JoinLocalKey, Op: query.OpIn, Value: ownerKeys},
+	}
+	if err := s.ctx.withReadResilience(ctx, func() error {
+		return s.ctx.provider.Execute(ctx, joinMeta, jq, joinRows.Interface())
+	}); err != nil {
+		return fmt.Errorf("Include(%q): join table: %w", name, err)
+	}
+
+	// 3. Owner -> target keys, and the distinct target keys to load.
+	ownerToTargets := map[any][]any{}
+	targetSeen := map[any]struct{}{}
+	var targetKeys []any
+	rows := joinRows.Elem()
+	for i := 0; i < rows.Len(); i++ {
+		local := rows.Index(i).FieldByName("Local")
+		foreign := rows.Index(i).FieldByName("Foreign")
+		ownerToTargets[normalizeKey(local)] = append(ownerToTargets[normalizeKey(local)], foreign.Interface())
+		fk := normalizeKey(foreign)
+		if _, seen := targetSeen[fk]; seen {
+			continue
+		}
+		targetSeen[fk] = struct{}{}
+		targetKeys = append(targetKeys, foreign.Interface())
+	}
+
+	// 4. Load the targets (applying their query filters), keyed by PK.
+	byTargetKey := map[any]reflect.Value{}
+	if len(targetKeys) > 0 {
+		targetSlice := reflect.New(reflect.SliceOf(reflect.PtrTo(rel.Target))) // *[]*Target
+		var where query.Node = query.Predicate{Field: targetPKCol, Op: query.OpIn, Value: targetKeys}
+		if !s.ignoreFilters {
+			if f := s.ctx.filtersFor(childMeta.Name); len(f) > 0 {
+				where = query.Composite{Logic: query.LogicAnd, Children: append([]query.Node{where}, f...)}
+			}
+		}
+		tq := query.Query{EntityName: childMeta.Name, Where: where}
+		if err := s.ctx.withReadResilience(ctx, func() error {
+			return s.ctx.provider.Execute(ctx, childMeta, tq, targetSlice.Interface())
+		}); err != nil {
+			return fmt.Errorf("Include(%q): %w", name, err)
+		}
+		ts := targetSlice.Elem()
+		for i := 0; i < ts.Len(); i++ {
+			t := ts.Index(i)
+			byTargetKey[normalizeKey(fieldValue(t.Elem(), targetKeyField))] = t
+		}
+	}
+
+	// 5. Stitch onto each owner's navigation slice.
+	for i := 0; i < parents.Len(); i++ {
+		parent := parents.Index(i)
+		pk := fieldValue(parent, ownerKeyField)
+		if !pk.IsValid() {
+			continue
+		}
+		var matches []reflect.Value
+		for _, tk := range ownerToTargets[normalizeKey(pk)] {
+			if t, ok := byTargetKey[normalizeKey(reflect.ValueOf(tk))]; ok {
+				matches = append(matches, t)
+			}
+		}
+		if err := assignNav(addressableStruct(parent), rel.Field, matches, true); err != nil {
+			return fmt.Errorf("Include(%q): %w", name, err)
+		}
+	}
+	return nil
+}
+
+// goTypeOfColumn returns the Go type of the field mapped to a storage column.
+func goTypeOfColumn(meta *model.EntityMeta, column string) reflect.Type {
+	if f := meta.FieldByColumn(column); f != nil {
+		return f.GoType
 	}
 	return nil
 }
