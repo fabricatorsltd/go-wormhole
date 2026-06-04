@@ -86,45 +86,51 @@ func ApplyPendingFiles(ctx context.Context, db *sql.DB, dialect Dialect, dir str
 	if err := EnsureHistoryTable(ctx, db); err != nil {
 		return nil, err
 	}
-	applied, err := AppliedMigrations(ctx, db)
-	if err != nil {
-		return nil, err
-	}
 	migs, err := LoadMigrationDir(dir)
 	if err != nil {
 		return nil, err
 	}
 
 	var done []string
-	for _, m := range migs {
-		if applied[m.ID] {
-			continue
-		}
-		b := NewBuilderWith(dialect)
-		for _, op := range m.Up {
-			b.AddOp(op)
-		}
-
-		tx, err := db.BeginTx(ctx, nil)
+	// Hold the advisory lock across the whole apply so two processes cannot run
+	// the pending set at once. The applied set is read inside the lock, so a
+	// migration another process committed while we waited is not re-run.
+	err = withMigrationLock(ctx, db, dialect, func() error {
+		applied, err := AppliedMigrations(ctx, db)
 		if err != nil {
-			return done, err
+			return err
 		}
-		for _, stmt := range b.Statements() {
-			if _, err := tx.ExecContext(ctx, stmt); err != nil {
-				_ = tx.Rollback()
-				return done, fmt.Errorf("migration %s: %w", m.ID, err)
+		for _, m := range migs {
+			if applied[m.ID] {
+				continue
 			}
+			b := NewBuilderWith(dialect)
+			for _, op := range m.Up {
+				b.AddOp(op)
+			}
+
+			tx, err := db.BeginTx(ctx, nil)
+			if err != nil {
+				return err
+			}
+			for _, stmt := range b.Statements() {
+				if _, err := tx.ExecContext(ctx, stmt); err != nil {
+					_ = tx.Rollback()
+					return fmt.Errorf("migration %s: %w", m.ID, err)
+				}
+			}
+			if err := RecordMigration(ctx, tx, m.ID, dialect); err != nil {
+				_ = tx.Rollback()
+				return fmt.Errorf("migration %s: record: %w", m.ID, err)
+			}
+			if err := tx.Commit(); err != nil {
+				return fmt.Errorf("migration %s: commit: %w", m.ID, err)
+			}
+			done = append(done, m.ID)
 		}
-		if err := RecordMigration(ctx, tx, m.ID, dialect); err != nil {
-			_ = tx.Rollback()
-			return done, fmt.Errorf("migration %s: record: %w", m.ID, err)
-		}
-		if err := tx.Commit(); err != nil {
-			return done, fmt.Errorf("migration %s: commit: %w", m.ID, err)
-		}
-		done = append(done, m.ID)
-	}
-	return done, nil
+		return nil
+	})
+	return done, err
 }
 
 // ScriptFiles renders the up operations of every file-based migration in dir as

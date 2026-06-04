@@ -1,6 +1,8 @@
 package migrations
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/fabricatorsltd/go-wormhole/pkg/util"
@@ -18,6 +20,26 @@ func (MySQLDialect) QuoteIdent(s string) string      { return "`" + s + "`" }
 func (MySQLDialect) AutoIncrementClause() string     { return "AUTO_INCREMENT" }
 func (MySQLDialect) AutoIncrementType(string) string { return "" }
 func (MySQLDialect) SupportsIfNotExists() bool       { return true }
+
+// AcquireLock takes a named lock via GET_LOCK, waiting up to 30s. GET_LOCK
+// returns 1 on success, 0 on timeout, and NULL on error, so the result is
+// checked rather than assumed.
+func (MySQLDialect) AcquireLock(ctx context.Context, conn *sql.Conn) error {
+	var got sql.NullInt64
+	if err := conn.QueryRowContext(ctx, "SELECT GET_LOCK(?, 30)", migrationLockName).Scan(&got); err != nil {
+		return err
+	}
+	if !got.Valid || got.Int64 != 1 {
+		return fmt.Errorf("could not acquire migration lock %q within 30s", migrationLockName)
+	}
+	return nil
+}
+
+// ReleaseLock frees the named lock taken by AcquireLock.
+func (MySQLDialect) ReleaseLock(ctx context.Context, conn *sql.Conn) error {
+	_, err := conn.ExecContext(ctx, "SELECT RELEASE_LOCK(?)", migrationLockName)
+	return err
+}
 
 // DropIndexSQL renders MySQL's table-scoped DROP INDEX (no IF EXISTS).
 func (d MySQLDialect) DropIndexSQL(name, table string) string {

@@ -1,11 +1,19 @@
 package migrations
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 
 	"github.com/fabricatorsltd/go-wormhole/pkg/util"
 )
+
+// migrationLockKey is the fixed advisory-lock key used to serialize migration
+// runs. It is an arbitrary constant shared by every wormhole process.
+const migrationLockKey int64 = 0x776F726D68 // "wormh"
+
+const migrationLockName = "wormhole_migrations"
 
 // PostgresDialect generates DDL for PostgreSQL.
 type PostgresDialect struct{}
@@ -67,6 +75,48 @@ func (d PostgresDialect) ResetSequence(table string, column string) string {
 }
 
 func (PostgresDialect) Placeholder(n int) string { return fmt.Sprintf("$%d", n) }
+
+// AcquireLock takes a session-level advisory lock, blocking until it is granted.
+func (PostgresDialect) AcquireLock(ctx context.Context, conn *sql.Conn) error {
+	_, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", migrationLockKey)
+	return err
+}
+
+// ReleaseLock frees the advisory lock taken by AcquireLock.
+func (PostgresDialect) ReleaseLock(ctx context.Context, conn *sql.Conn) error {
+	_, err := conn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", migrationLockKey)
+	return err
+}
+
+// IdempotentHistoryDDL creates the migration history table if it is absent so an
+// idempotent script is self-contained on a fresh database.
+func (d PostgresDialect) IdempotentHistoryDDL(historyTable string) string {
+	return fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
+    %s TEXT PRIMARY KEY,
+    %s TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+`, d.QuoteIdent(historyTable), d.QuoteIdent("migration_id"), d.QuoteIdent("applied_at"))
+}
+
+// WrapIdempotent guards a migration's statements with a history-existence check
+// so the script can be re-run safely. PostgreSQL has no top-level IF, so the
+// block runs inside an anonymous DO body.
+func (d PostgresDialect) WrapIdempotent(migrationID, historyTable string, statements []string) string {
+	id := strings.ReplaceAll(migrationID, "'", "''")
+	var b strings.Builder
+	b.WriteString("DO $$\nBEGIN\n")
+	fmt.Fprintf(&b, "IF NOT EXISTS (SELECT 1 FROM %s WHERE %s = '%s') THEN\n",
+		d.QuoteIdent(historyTable), d.QuoteIdent("migration_id"), id)
+	for _, s := range statements {
+		b.WriteString("    ")
+		b.WriteString(strings.TrimRight(strings.TrimSpace(s), ";"))
+		b.WriteString(";\n")
+	}
+	fmt.Fprintf(&b, "    INSERT INTO %s (%s) VALUES ('%s');\n",
+		d.QuoteIdent(historyTable), d.QuoteIdent("migration_id"), id)
+	b.WriteString("END IF;\nEND $$;\n")
+	return b.String()
+}
 
 // ColumnName returns the database column name for a given Go field name,
 // converted to snake_case for PostgreSQL.

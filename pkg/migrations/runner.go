@@ -88,24 +88,27 @@ func (r *Runner) Up(ctx context.Context) error {
 		return err
 	}
 
-	applied, err := AppliedMigrations(ctx, r.db)
-	if err != nil {
-		return err
-	}
-
 	sort.Slice(r.migrations, func(i, j int) bool {
 		return r.migrations[i].ID < r.migrations[j].ID
 	})
 
-	for _, m := range r.migrations {
-		if applied[m.ID] {
-			continue
+	// Serialize concurrent runs behind the dialect's advisory lock; read the
+	// applied set inside it so a peer process's commit is observed.
+	return withMigrationLock(ctx, r.db, r.dialect, func() error {
+		applied, err := AppliedMigrations(ctx, r.db)
+		if err != nil {
+			return err
 		}
-		if err := r.applyUp(ctx, m); err != nil {
-			return fmt.Errorf("migration %s: %w", m.ID, err)
+		for _, m := range r.migrations {
+			if applied[m.ID] {
+				continue
+			}
+			if err := r.applyUp(ctx, m); err != nil {
+				return fmt.Errorf("migration %s: %w", m.ID, err)
+			}
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 // Down rolls back the last applied migration.

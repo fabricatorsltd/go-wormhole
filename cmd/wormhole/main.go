@@ -53,13 +53,18 @@ func main() {
 			cmdList()
 		case "script":
 			if len(args) < 3 {
-				fatal("Usage: wormhole migrations script <Name> [dialect]")
+				fatal("Usage: wormhole migrations script <Name> [dialect] [--idempotent]")
 			}
 			dialect := "default"
-			if len(args) > 3 {
-				dialect = args[3]
+			idempotent := false
+			for _, a := range args[3:] {
+				if a == "--idempotent" {
+					idempotent = true
+				} else {
+					dialect = a
+				}
 			}
-			cmdScript(args[2], dialect)
+			cmdScript(args[2], dialect, idempotent)
 		default:
 			printUsage()
 			os.Exit(1)
@@ -215,9 +220,15 @@ func appliedStatus() map[string]bool {
 	return applied
 }
 
-func cmdScript(name, dialect string) {
+func cmdScript(name, dialect string, idempotent bool) {
 	dir := migrationsDir()
-	out, err := migrations.ScriptFiles(dir, resolveDialect(dialect))
+	var out string
+	var err error
+	if idempotent {
+		out, err = migrations.ScriptFilesIdempotent(dir, resolveDialect(dialect))
+	} else {
+		out, err = migrations.ScriptFiles(dir, resolveDialect(dialect))
+	}
 	if err != nil {
 		fatalf("render script: %v", err)
 	}

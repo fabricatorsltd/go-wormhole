@@ -42,14 +42,19 @@ func (c *DbContext) runCLIIfEnabled() {
 			cliMigrationsList()
 		case "script":
 			if len(os.Args) < 4 {
-				fmt.Fprintln(os.Stderr, "Usage: <app> migrations script <Name> [dialect]")
+				fmt.Fprintln(os.Stderr, "Usage: <app> migrations script <Name> [dialect] [--idempotent]")
 				os.Exit(1)
 			}
 			dialect := "default"
-			if len(os.Args) > 4 {
-				dialect = os.Args[4]
+			idempotent := false
+			for _, a := range os.Args[4:] {
+				if a == "--idempotent" {
+					idempotent = true
+				} else {
+					dialect = a
+				}
 			}
-			cliMigrationsScript(os.Args[3], dialect)
+			cliMigrationsScript(os.Args[3], dialect, idempotent)
 		default:
 			cliUsage()
 			os.Exit(1)
@@ -245,7 +250,7 @@ func cliMigrationsList() {
 	}
 }
 
-func cliMigrationsScript(name, dialectName string) {
+func cliMigrationsScript(name, dialectName string, idempotent bool) {
 	dir := cliDir()
 	dialect := cliResolveDialect(dialectName)
 
@@ -263,6 +268,14 @@ func cliMigrationsScript(name, dialectName string) {
 	}
 
 	sqlContent := migrations.ScriptMigrations(regs, dialect)
+	if idempotent {
+		s, err := migrations.ScriptMigrationsIdempotent(regs, dialect)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		sqlContent = s
+	}
 	sqlPath := filepath.Join(dir, migrations.SQLScriptFileName(name))
 	if err := os.WriteFile(sqlPath, []byte(sqlContent), 0o644); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing SQL script: %v\n", err)
