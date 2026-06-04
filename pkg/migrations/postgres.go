@@ -2,6 +2,7 @@ package migrations
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/fabricatorsltd/go-wormhole/pkg/util"
 )
@@ -12,6 +13,20 @@ type PostgresDialect struct{}
 func (PostgresDialect) QuoteIdent(s string) string  { return `"` + s + `"` }
 func (PostgresDialect) AutoIncrementClause() string { return "" }
 func (PostgresDialect) SupportsIfNotExists() bool   { return true }
+
+// MapColumnType renders portable SQL types as their Postgres-native form. It is
+// applied at DDL-render time only, so the stored ColumnDef keeps its portable
+// type and schema diffing stays stable. An empty return keeps the type as-is.
+func (PostgresDialect) MapColumnType(sqlType string) string {
+	switch strings.ToUpper(sqlType) {
+	case "TIMESTAMP", "DATETIME":
+		return "TIMESTAMPTZ"
+	case "BLOB":
+		return "BYTEA"
+	default:
+		return ""
+	}
+}
 
 // AutoIncrementType maps INTEGER → SERIAL, BIGINT → BIGSERIAL.
 func (PostgresDialect) AutoIncrementType(baseType string) string {

@@ -238,10 +238,19 @@ func (b *SchemaBuilder) renderColumnDef(c ColumnDef, q func(string) string) stri
 }
 
 func (b *SchemaBuilder) resolveType(c ColumnDef) string {
+	t := GoTypeToSQL(c.GoType)
 	if c.SQLType != "" {
-		return strings.ToUpper(c.SQLType)
+		t = strings.ToUpper(c.SQLType)
 	}
-	return GoTypeToSQL(c.GoType)
+	// Let the dialect map portable types to native ones (e.g. Postgres
+	// TIMESTAMP -> TIMESTAMPTZ). Render-time only; the stored ColumnDef is
+	// unchanged so schema diffing stays stable.
+	if m, ok := b.dialect.(interface{ MapColumnType(string) string }); ok {
+		if mapped := m.MapColumnType(t); mapped != "" {
+			t = mapped
+		}
+	}
+	return t
 }
 
 // GoTypeToSQL maps a Go reflect.Type to a default SQL type.

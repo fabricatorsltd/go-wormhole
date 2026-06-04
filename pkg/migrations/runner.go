@@ -22,6 +22,16 @@ func Register(m Migration) {
 	globalMigrations = append(globalMigrations, m)
 }
 
+// Registered returns a copy of the globally registered migrations. It lets the
+// generator diff new models against the schema the existing migrations already
+// describe (via RebuildFromMigrations) instead of against an empty schema, so
+// it can emit incremental ALTERs rather than recreating every table.
+func Registered() []Migration {
+	out := make([]Migration, len(globalMigrations))
+	copy(out, globalMigrations)
+	return out
+}
+
 // Runner executes pending migrations against a database.
 type Runner struct {
 	db         *sql.DB
