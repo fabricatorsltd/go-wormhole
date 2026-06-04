@@ -133,6 +133,11 @@ func ParseType(t reflect.Type) *model.EntityMeta {
 			// Field is (de)serialized to/from a JSON text/blob column.
 			field.Tags["json"] = "true"
 		}
+		if fm.Has("vector") {
+			// Field is a []float32/[]float64 (de)serialized to/from a pgvector
+			// column in text form. Pair with type:vector(N) for the DDL type.
+			field.Tags["vector"] = "true"
+		}
 
 		if fm.Has("version") {
 			// Field is an optimistic-concurrency token (integer columns only).

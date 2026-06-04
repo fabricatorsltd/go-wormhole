@@ -3,6 +3,7 @@ package sql
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
@@ -212,7 +213,9 @@ func (c *Compiler) writeSelectTail(b *strings.Builder, params *[]any, meta *mode
 		} else {
 			b.WriteString(", ")
 		}
-		if s.Case != nil {
+		if s.Distance != nil {
+			c.writeVectorDistance(b, params, meta, *s.Distance)
+		} else if s.Case != nil {
 			c.compileCaseExpr(b, params, meta, *s.Case)
 		} else {
 			col := fieldColumn(meta, s.Field)
@@ -968,6 +971,36 @@ func (c *Compiler) writeColumnRef(b *strings.Builder, table, field string) {
 		b.WriteString(".")
 	}
 	b.WriteString(c.quote(field))
+}
+
+// writeVectorDistance renders a pgvector distance expression, e.g.
+// "embedding" <-> $1::vector. The query vector is bound as a text parameter and
+// cast to vector, since an operator gives the planner no column to infer the
+// parameter type from. PostgreSQL + pgvector only (guarded before compilation).
+func (c *Compiler) writeVectorDistance(b *strings.Builder, params *[]any, meta *model.EntityMeta, d query.VectorDistance) {
+	op := "<->"
+	switch d.Op {
+	case query.VectorCosine:
+		op = "<=>"
+	case query.VectorInner:
+		op = "<#>"
+	}
+	b.WriteString(c.quote(fieldColumn(meta, d.Field)))
+	b.WriteString(" ")
+	b.WriteString(op)
+	b.WriteString(" ")
+	b.WriteString(c.ph(len(*params) + 1))
+	b.WriteString("::vector")
+	*params = append(*params, vectorLiteral(d.Vector))
+}
+
+// vectorLiteral renders a query vector in pgvector's text form, e.g. "[1,2,3]".
+func vectorLiteral(v []float32) string {
+	parts := make([]string, len(v))
+	for i, x := range v {
+		parts[i] = strconv.FormatFloat(float64(x), 'g', -1, 32)
+	}
+	return "[" + strings.Join(parts, ",") + "]"
 }
 
 func (c *Compiler) compileNode(b *strings.Builder, params *[]any, node query.Node) {

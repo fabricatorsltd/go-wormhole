@@ -377,6 +377,13 @@ func (s *EntitySet) OrderByCase(c query.CaseExpr, dir query.SortDir) *EntitySet 
 	return s
 }
 
+// OrderByDistance orders rows by a pgvector distance for nearest-neighbor
+// search; pair with Limit for top-k. PostgreSQL only.
+func (s *EntitySet) OrderByDistance(d query.VectorDistance, dir query.SortDir) *EntitySet {
+	s.sorts = append(s.sorts, query.Sort{Distance: &d, Dir: dir})
+	return s
+}
+
 // Limit sets the maximum number of results.
 func (s *EntitySet) Limit(n int) *EntitySet {
 	s.lim = n

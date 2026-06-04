@@ -56,6 +56,13 @@ func (b *Builder) OrderByCase(c CaseExpr, dir SortDir) *Builder {
 	return b
 }
 
+// OrderByDistance appends a pgvector nearest-neighbor sort; combine with Limit
+// for top-k. PostgreSQL only.
+func (b *Builder) OrderByDistance(d VectorDistance, dir SortDir) *Builder {
+	b.q.OrderBy = append(b.q.OrderBy, Sort{Distance: &d, Dir: dir})
+	return b
+}
+
 // Join attaches an INNER JOIN <entity> ON <on> clause to the query.
 // The on predicate is typically produced by dsl.JoinEq for type-safety, but
 // any Predicate or Composite is accepted.

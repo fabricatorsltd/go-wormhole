@@ -79,6 +79,31 @@ func jsonCond[B any, F any](base *B, fieldPtr *F, path string, op query.Op, val 
 	return Condition{Field: fi.Column, Op: op, Value: val, Table: tm.table, JSONPath: path}
 }
 
+// L2Distance builds a pgvector Euclidean-distance term for a nearest-neighbor
+// ORDER BY: column <-> queryVec. Use it with OrderByDistance and a Limit for
+// top-k. PostgreSQL only.
+//
+//	d := &Doc{}
+//	db.Set(&docs).OrderByDistance(dsl.L2Distance(d, &d.Embedding, q), query.Asc).Limit(5).All()
+func L2Distance[B any](base *B, fieldPtr *[]float32, vec []float32) query.VectorDistance {
+	return vectorDist(base, fieldPtr, query.VectorL2, vec)
+}
+
+// CosineDistance builds a pgvector cosine-distance term (column <=> queryVec).
+func CosineDistance[B any](base *B, fieldPtr *[]float32, vec []float32) query.VectorDistance {
+	return vectorDist(base, fieldPtr, query.VectorCosine, vec)
+}
+
+// InnerProduct builds a pgvector negative-inner-product term (column <#> queryVec).
+func InnerProduct[B any](base *B, fieldPtr *[]float32, vec []float32) query.VectorDistance {
+	return vectorDist(base, fieldPtr, query.VectorInner, vec)
+}
+
+func vectorDist[B any](base *B, fieldPtr *[]float32, op query.VectorOp, vec []float32) query.VectorDistance {
+	fi := resolve(base, fieldPtr)
+	return query.VectorDistance{Field: fi.Column, Op: op, Vector: vec}
+}
+
 // In builds an IN predicate.
 func In[B any, F any](base *B, fieldPtr *F, vals ...F) Condition {
 	fi, tm := resolveWithTypeMap(base, fieldPtr)

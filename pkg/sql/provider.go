@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strconv"
+	"strings"
 
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
 	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
@@ -132,7 +134,24 @@ func sqlCapabilities() provider.Capabilities {
 		SetOperations:    true,
 		CaseExpressions:  true,
 		JSONQueries:      true,
+		VectorSearch:     true,
 	}
+}
+
+// requireVectorDialect rejects a vector distance ORDER BY on any SQL dialect
+// other than PostgreSQL, where the pgvector operators live. The VectorSearch
+// capability gates document stores; this gates the non-postgres SQL dialects,
+// which share one capability set but cannot emit `<->`/`<=>`/`<#>`.
+func requireVectorDialect(c *Compiler, q query.Query) error {
+	if c.dialect() == "postgres" {
+		return nil
+	}
+	for _, s := range q.OrderBy {
+		if s.Distance != nil {
+			return fmt.Errorf("vector distance search requires the PostgreSQL dialect (pgvector)")
+		}
+	}
+	return nil
 }
 
 func (p *Provider) Open(ctx context.Context, dsn string) error {
@@ -298,6 +317,9 @@ func (p *Provider) Execute(ctx context.Context, meta *model.EntityMeta, q query.
 	if err != nil {
 		return err
 	}
+	if err := requireVectorDialect(p.compiler, q); err != nil {
+		return err
+	}
 	c := p.compiler.Select(meta, q)
 	p.logQuery(c)
 	return p.retryDo(ctx, func() error {
@@ -315,6 +337,9 @@ func (p *Provider) Execute(ctx context.Context, meta *model.EntityMeta, q query.
 func (p *Provider) ExplainSelect(meta *model.EntityMeta, q query.Query) (provider.CompiledQuery, error) {
 	q, err := provider.ValidateQueryCapabilities(meta, p.Capabilities(), q)
 	if err != nil {
+		return provider.CompiledQuery{}, err
+	}
+	if err := requireVectorDialect(p.compiler, q); err != nil {
 		return provider.CompiledQuery{}, err
 	}
 	c := p.compiler.Select(meta, q)
@@ -623,6 +648,9 @@ func (t *sqlTx) Execute(ctx context.Context, meta *model.EntityMeta, q query.Que
 	if err != nil {
 		return err
 	}
+	if err := requireVectorDialect(t.compiler, q); err != nil {
+		return err
+	}
 	c := t.compiler.Select(meta, q)
 	t.logQuery(c)
 	rows, err := t.tx.QueryContext(ctx, c.SQL, c.Params...)
@@ -648,6 +676,11 @@ func structToMap(meta *model.EntityMeta, entity any) map[string]any {
 		if _, ok := f.Tags["json"]; ok {
 			if b, err := json.Marshal(v); err == nil {
 				v = string(b)
+			}
+		} else if _, ok := f.Tags["vector"]; ok {
+			// `vector`-tagged fields are written in pgvector text form, [1,2,3].
+			if s, ok := vectorText(v); ok {
+				v = s
 			}
 		}
 		m[f.FieldName] = v
@@ -692,7 +725,80 @@ func scanTarget(field reflect.Value, fm *model.FieldMeta) any {
 	if _, ok := fm.Tags["json"]; ok {
 		return jsonScanner{dst: addr}
 	}
+	if _, ok := fm.Tags["vector"]; ok {
+		return vectorScanner{dst: addr}
+	}
 	return addr
+}
+
+// vectorText renders a []float32 or []float64 in pgvector's text form, [1,2,3].
+func vectorText(v any) (string, bool) {
+	switch s := v.(type) {
+	case []float32:
+		parts := make([]string, len(s))
+		for i, x := range s {
+			parts[i] = strconv.FormatFloat(float64(x), 'g', -1, 32)
+		}
+		return "[" + strings.Join(parts, ",") + "]", true
+	case []float64:
+		parts := make([]string, len(s))
+		for i, x := range s {
+			parts[i] = strconv.FormatFloat(x, 'g', -1, 64)
+		}
+		return "[" + strings.Join(parts, ",") + "]", true
+	}
+	return "", false
+}
+
+// vectorScanner parses a pgvector text value ("[1,2,3]") back into a []float32
+// or []float64 field. Used for `vector`-tagged columns.
+type vectorScanner struct{ dst any }
+
+func (s vectorScanner) Scan(src any) error {
+	if src == nil {
+		return nil
+	}
+	var str string
+	switch v := src.(type) {
+	case []byte:
+		str = string(v)
+	case string:
+		str = v
+	default:
+		return fmt.Errorf("vector column: cannot scan %T", src)
+	}
+	str = strings.TrimSpace(str)
+	str = strings.TrimPrefix(str, "[")
+	str = strings.TrimSuffix(str, "]")
+	if str == "" {
+		return nil
+	}
+	parts := strings.Split(str, ",")
+	switch dst := s.dst.(type) {
+	case *[]float32:
+		out := make([]float32, len(parts))
+		for i, p := range parts {
+			f, err := strconv.ParseFloat(strings.TrimSpace(p), 32)
+			if err != nil {
+				return fmt.Errorf("vector column: %w", err)
+			}
+			out[i] = float32(f)
+		}
+		*dst = out
+	case *[]float64:
+		out := make([]float64, len(parts))
+		for i, p := range parts {
+			f, err := strconv.ParseFloat(strings.TrimSpace(p), 64)
+			if err != nil {
+				return fmt.Errorf("vector column: %w", err)
+			}
+			out[i] = f
+		}
+		*dst = out
+	default:
+		return fmt.Errorf("vector column: dest must be *[]float32 or *[]float64, got %T", s.dst)
+	}
+	return nil
 }
 
 // pkFromStruct returns the entity's primary-key value: a scalar for a
@@ -845,6 +951,9 @@ func scanElem(rows *sql.Rows, cols []string, colToField map[string]*model.FieldM
 func (p *Provider) ExecuteStream(ctx context.Context, meta *model.EntityMeta, q query.Query, structType reflect.Type, yield func(any) bool) error {
 	q, err := provider.ValidateQueryCapabilities(meta, p.Capabilities(), q)
 	if err != nil {
+		return err
+	}
+	if err := requireVectorDialect(p.compiler, q); err != nil {
 		return err
 	}
 	c := p.compiler.Select(meta, q)

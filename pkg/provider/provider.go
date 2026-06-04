@@ -184,6 +184,7 @@ type Capabilities struct {
 	SetOperations    bool
 	CaseExpressions  bool
 	JSONQueries      bool
+	VectorSearch     bool
 }
 
 // CapabilityReporter is an optional interface for providers that
@@ -204,6 +205,12 @@ func DetectCapabilities(p Provider) Capabilities {
 // ValidateQueryCapabilities verifies whether the query shape is supported
 // by the provided capability set and returns a normalized query shape.
 func ValidateQueryCapabilities(meta *model.EntityMeta, c Capabilities, q query.Query) (query.Query, error) {
+	// Vector search is checked before plain sorting so a distance order-by on a
+	// provider without it gets the precise message, not "does not support
+	// sorting".
+	if !c.VectorSearch && queryHasVectorDistance(q) {
+		return q, fmt.Errorf("provider does not support vector search")
+	}
 	if len(q.OrderBy) > 0 && !c.Sorting {
 		return q, fmt.Errorf("provider does not support sorting")
 	}
@@ -308,6 +315,17 @@ func whereHasCase(node query.Node) bool {
 			if whereHasCase(child) {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+// queryHasVectorDistance reports whether the query orders by a pgvector distance
+// term, which only the PostgreSQL provider supports.
+func queryHasVectorDistance(q query.Query) bool {
+	for _, s := range q.OrderBy {
+		if s.Distance != nil {
+			return true
 		}
 	}
 	return false

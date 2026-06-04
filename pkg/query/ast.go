@@ -84,9 +84,10 @@ type SetOp struct {
 // expression in place of a column reference. Field is otherwise the column
 // to sort on.
 type Sort struct {
-	Field string
-	Dir   SortDir
-	Case  *CaseExpr // optional CASE WHEN … THEN … expression
+	Field    string
+	Dir      SortDir
+	Case     *CaseExpr       // optional CASE WHEN ... THEN ... expression
+	Distance *VectorDistance // optional pgvector distance expression (PostgreSQL only)
 }
 
 // AggFunc is the type of an aggregate function.
