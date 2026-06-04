@@ -179,10 +179,67 @@ func (c *Compiler) Select(meta *model.EntityMeta, q query.Query) Compiled {
 // string is a legitimate non-default value in the domain) should not
 // declare a `default:` on that field.
 func (c *Compiler) Insert(meta *model.EntityMeta, values map[string]any) Compiled {
-	var cols, placeholders []string
-	var params []any
-	idx := 1
+	fields := insertColumns(meta, values)
+	cols := make([]string, len(fields))
+	placeholders := make([]string, len(fields))
+	params := make([]any, len(fields))
+	for i, f := range fields {
+		cols[i] = c.quote(f.Column)
+		placeholders[i] = c.ph(i + 1)
+		params[i] = values[f.FieldName]
+	}
 
+	sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
+		c.quote(meta.Name),
+		strings.Join(cols, ", "),
+		strings.Join(placeholders, ", "),
+	)
+	return Compiled{SQL: sql, Params: params}
+}
+
+// InsertMany compiles a single multi-row INSERT for several entities that
+// share the same emitted column set. The caller MUST group rows by
+// insertColumnKey first: every map in `rows` has to produce the same columns,
+// otherwise the VALUES tuples would not line up. No RETURNING is emitted, so
+// this is for client-assigned primary keys only (the flush path enforces that).
+func (c *Compiler) InsertMany(meta *model.EntityMeta, rows []map[string]any) Compiled {
+	if len(rows) == 0 {
+		return Compiled{}
+	}
+	fields := insertColumns(meta, rows[0])
+	cols := make([]string, len(fields))
+	for i, f := range fields {
+		cols[i] = c.quote(f.Column)
+	}
+
+	params := make([]any, 0, len(rows)*len(fields))
+	tuples := make([]string, len(rows))
+	idx := 1
+	for r, row := range rows {
+		ph := make([]string, len(fields))
+		for i, f := range fields {
+			ph[i] = c.ph(idx)
+			params = append(params, row[f.FieldName])
+			idx++
+		}
+		tuples[r] = "(" + strings.Join(ph, ", ") + ")"
+	}
+
+	sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES %s",
+		c.quote(meta.Name),
+		strings.Join(cols, ", "),
+		strings.Join(tuples, ", "),
+	)
+	return Compiled{SQL: sql, Params: params}
+}
+
+// insertColumns returns the fields an INSERT writes for the given entity
+// values, in declaration order. Auto-increment PKs are always skipped (the DB
+// generates them); `default:`-tagged fields are skipped when their value is the
+// Go zero value so the column DEFAULT applies. This is the single source of
+// truth for which columns an INSERT carries, shared by Insert and InsertMany.
+func insertColumns(meta *model.EntityMeta, values map[string]any) []model.FieldMeta {
+	out := make([]model.FieldMeta, 0, len(meta.Fields))
 	for _, f := range meta.Fields {
 		if f.AutoIncr {
 			continue
@@ -192,18 +249,22 @@ func (c *Compiler) Insert(meta *model.EntityMeta, values map[string]any) Compile
 				continue
 			}
 		}
-		cols = append(cols, c.quote(f.Column))
-		params = append(params, values[f.FieldName])
-		placeholders = append(placeholders, c.ph(idx))
-		idx++
+		out = append(out, f)
 	}
+	return out
+}
 
-	sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-		c.quote(meta.Name),
-		strings.Join(cols, ", "),
-		strings.Join(placeholders, ", "),
-	)
-	return Compiled{SQL: sql, Params: params}
+// insertColumnKey returns a stable key identifying the emitted column set for
+// an entity's values. Two entities batch into one multi-row INSERT only when
+// their keys match, because `default:`-tagged columns drop out per row when
+// zero and a single statement needs one shared column list.
+func insertColumnKey(meta *model.EntityMeta, values map[string]any) string {
+	fields := insertColumns(meta, values)
+	names := make([]string, len(fields))
+	for i, f := range fields {
+		names[i] = f.Column
+	}
+	return strings.Join(names, ",")
 }
 
 // InsertOnConflict compiles an INSERT ... ON CONFLICT statement, reusing

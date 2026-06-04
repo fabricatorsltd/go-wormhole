@@ -374,6 +374,61 @@ func (t *sqlTx) Insert(ctx context.Context, meta *model.EntityMeta, entity any) 
 	return pkFromStruct(meta, entity), err
 }
 
+// InsertBatch persists several same-type entities using as few multi-row
+// INSERT statements as possible, implementing provider.BatchInserter on the SQL
+// Tx. Entities whose emitted column set differs (because `default:`-tagged
+// fields drop out when zero) cannot share one statement, so the batch is split
+// into maximal consecutive runs of identical column sets. Order is preserved,
+// matching the per-row path's semantics. No generated keys are written back:
+// the flush path only batches client-assigned primary keys.
+func (t *sqlTx) InsertBatch(ctx context.Context, meta *model.EntityMeta, entities []any) error {
+	rows := make([]map[string]any, len(entities))
+	keys := make([]string, len(entities))
+	for i, e := range entities {
+		rows[i] = structToMap(meta, e)
+		keys[i] = insertColumnKey(meta, rows[i])
+	}
+	for i := 0; i < len(entities); {
+		j := i + 1
+		for j < len(entities) && keys[j] == keys[i] {
+			j++
+		}
+		// The sub-run [i,j) shares a column set. Split it further so a single
+		// statement never exceeds the placeholder budget: a multi-row INSERT
+		// carries cols*rows parameters, and drivers cap that (SQLite historically
+		// 999, MSSQL 2100, Postgres 65535). EF Core bounds batch size for the same
+		// reason. maxBatchParams is conservative so no backend rejects a batch the
+		// per-row path would have accepted.
+		cols := len(insertColumns(meta, rows[i]))
+		if cols < 1 {
+			cols = 1
+		}
+		maxRows := maxBatchParams / cols
+		if maxRows < 1 {
+			maxRows = 1
+		}
+		for s := i; s < j; {
+			end := s + maxRows
+			if end > j {
+				end = j
+			}
+			c := t.compiler.InsertMany(meta, rows[s:end])
+			t.logQuery(c)
+			if _, err := t.tx.ExecContext(ctx, c.SQL, c.Params...); err != nil {
+				return err
+			}
+			s = end
+		}
+		i = j
+	}
+	return nil
+}
+
+// maxBatchParams caps the placeholder count in a single multi-row INSERT. Set
+// below SQLite's historical 999-variable limit so a batch never fails on a
+// backend the per-row path would have served.
+const maxBatchParams = 900
+
 // Upsert executes an INSERT ... ON CONFLICT inside the transaction,
 // implementing provider.Upserter on the SQL Tx.
 func (t *sqlTx) Upsert(ctx context.Context, meta *model.EntityMeta, entity any, conflict provider.ConflictClause) (any, error) {

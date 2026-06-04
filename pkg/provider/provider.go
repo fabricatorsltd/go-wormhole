@@ -110,6 +110,15 @@ type VersionedDeleter interface {
 	DeleteVersioned(ctx context.Context, meta *model.EntityMeta, pkValue, version any) (int64, error)
 }
 
+// BatchInserter is an optional interface a Tx may implement to persist several
+// same-type entities in as few multi-row INSERT statements as possible.
+// DbContext.flush uses it only for entities with client-assigned primary keys,
+// so no generated keys are written back. Providers that do not implement it
+// fall back to the per-row Insert path transparently.
+type BatchInserter interface {
+	InsertBatch(ctx context.Context, meta *model.EntityMeta, entities []any) error
+}
+
 // BulkUpdater is an optional interface a Provider may implement to update many
 // rows in a single statement, applying the given column assignments to every
 // row matching the query AST's WHERE clause. It does not load, track, or run

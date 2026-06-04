@@ -293,8 +293,49 @@ func (c *DbContext) flush(ctx stdctx.Context, pending []*model.Entry) error {
 			return fmt.Errorf("begin tx: %w", err)
 		}
 
-		for _, idx := range order {
-			e := pending[idx]
+		bi, batchable := tx.(provider.BatchInserter)
+
+		for i := 0; i < len(order); {
+			e := pending[order[i]]
+
+			// Group a contiguous run of same-type client-PK inserts into one
+			// multi-row INSERT when the provider supports it. Auto-increment PKs
+			// are excluded (isBatchableInsert): they need per-row generated-key
+			// write-back, which a multi-row INSERT cannot deliver reliably.
+			if batchable && isBatchableInsert(e) {
+				j := i + 1
+				for j < len(order) {
+					ej := pending[order[j]]
+					if ej.Meta != e.Meta || !isBatchableInsert(ej) {
+						break
+					}
+					j++
+				}
+				if j-i > 1 {
+					run := order[i:j]
+					// Both fixup passes run BEFORE the batch: every batched entity
+					// has a client-assigned PK (isBatchableInsert excludes
+					// auto-increment), so a parent's PK is already known and its
+					// child's FK column can be filled before the rows are written.
+					// The per-row path only defers fixupChildFKs to capture a
+					// generated key, which by construction never exists here.
+					for _, idx := range run {
+						c.fixupBelongsToFKs(pending[idx])
+						c.fixupChildFKs(pending[idx])
+					}
+					entities := make([]any, len(run))
+					for k, idx := range run {
+						entities[k] = pending[idx].Entity
+					}
+					if err := bi.InsertBatch(ctx, e.Meta, entities); err != nil {
+						_ = tx.Rollback()
+						return err
+					}
+					i = j
+					continue
+				}
+			}
+
 			if e.State == model.Added {
 				c.fixupBelongsToFKs(e)
 			}
@@ -305,6 +346,7 @@ func (c *DbContext) flush(ctx stdctx.Context, pending []*model.Entry) error {
 			if e.State == model.Added {
 				c.fixupChildFKs(e)
 			}
+			i++
 		}
 
 		return tx.Commit()
@@ -333,6 +375,16 @@ func (c *DbContext) flush(ctx stdctx.Context, pending []*model.Entry) error {
 	// never leave an entity ahead of the database.
 	bumpVersionTokens(pending)
 	return nil
+}
+
+// isBatchableInsert reports whether an entry can join a multi-row INSERT
+// batch. It must be a pending insert with no auto-increment primary key, so no
+// per-row generated-key write-back is needed (a multi-row INSERT cannot map
+// generated keys back to individual entities reliably). Client-assigned PKs and
+// keyless rows (e.g. join tables) qualify.
+func isBatchableInsert(e *model.Entry) bool {
+	return e.State == model.Added &&
+		(e.Meta.PrimaryKey == nil || !e.Meta.PrimaryKey.AutoIncr)
 }
 
 func (c *DbContext) applyEntry(ctx stdctx.Context, tx provider.Tx, e *model.Entry) error {
