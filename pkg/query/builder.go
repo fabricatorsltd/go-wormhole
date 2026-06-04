@@ -83,6 +83,30 @@ func (b *Builder) Select(columns ...string) *Builder {
 	return b
 }
 
+// Union combines the query with another via UNION (duplicate rows removed).
+func (b *Builder) Union(other Query) *Builder {
+	b.q.SetOps = append(b.q.SetOps, SetOp{Kind: SetUnion, Query: other})
+	return b
+}
+
+// UnionAll combines the query with another via UNION ALL (duplicates kept).
+func (b *Builder) UnionAll(other Query) *Builder {
+	b.q.SetOps = append(b.q.SetOps, SetOp{Kind: SetUnionAll, Query: other})
+	return b
+}
+
+// Intersect keeps only rows present in both queries.
+func (b *Builder) Intersect(other Query) *Builder {
+	b.q.SetOps = append(b.q.SetOps, SetOp{Kind: SetIntersect, Query: other})
+	return b
+}
+
+// Except keeps rows in this query that are not in the other.
+func (b *Builder) Except(other Query) *Builder {
+	b.q.SetOps = append(b.q.SetOps, SetOp{Kind: SetExcept, Query: other})
+	return b
+}
+
 // Limit sets the maximum number of results.
 func (b *Builder) Limit(n int) *Builder {
 	b.q.Limit = n

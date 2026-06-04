@@ -60,6 +60,25 @@ func (c *Compiler) Select(meta *model.EntityMeta, q query.Query) Compiled {
 	var b strings.Builder
 	var params []any
 
+	c.writeSelectBody(&b, &params, meta, q, false)
+	// Set operations: append each UNION / INTERSECT / EXCEPT operand. Operands
+	// carry no TOP and no trailing ORDER BY/LIMIT (those bind to the compound),
+	// so they compile as bare bodies; the outer query's tail follows.
+	for _, so := range q.SetOps {
+		b.WriteString(" ")
+		b.WriteString(so.Kind.Keyword())
+		b.WriteString(" ")
+		c.writeSelectBody(&b, &params, meta, so.Query, true)
+	}
+	c.writeSelectTail(&b, &params, meta, q)
+
+	return Compiled{SQL: b.String(), Params: params}
+}
+
+// writeSelectBody emits SELECT ... FROM ... [JOIN] [WHERE] [GROUP BY] [HAVING]
+// without the ORDER BY / LIMIT tail. suppressTop omits the MSSQL TOP clause,
+// used for set-operation operands where the limit binds to the compound.
+func (c *Compiler) writeSelectBody(b *strings.Builder, params *[]any, meta *model.EntityMeta, q query.Query, suppressTop bool) {
 	// SELECT columns (with optional DISTINCT and TOP for MSSQL)
 	b.WriteString("SELECT ")
 	// DISTINCT applies to row projection, not to an aggregate result (where it
@@ -67,7 +86,7 @@ func (c *Compiler) Select(meta *model.EntityMeta, q query.Query) Compiled {
 	if q.Distinct && len(q.Aggregates) == 0 {
 		b.WriteString("DISTINCT ")
 	}
-	if c.UseTOP && q.Limit > 0 && q.Offset == 0 {
+	if !suppressTop && c.UseTOP && q.Limit > 0 && q.Offset == 0 {
 		b.WriteString(fmt.Sprintf("TOP %d ", q.Limit))
 	}
 
@@ -138,13 +157,13 @@ func (c *Compiler) Select(meta *model.EntityMeta, q query.Query) Compiled {
 		b.WriteString(" ")
 		b.WriteString(c.quote(j.Entity))
 		b.WriteString(" ON ")
-		c.compileNode(&b, &params, j.On)
+		c.compileNode(b, params, j.On)
 	}
 
 	// WHERE
 	if q.Where != nil {
 		b.WriteString(" WHERE ")
-		c.compileNode(&b, &params, q.Where)
+		c.compileNode(b, params, q.Where)
 	}
 
 	// GROUP BY
@@ -161,9 +180,13 @@ func (c *Compiler) Select(meta *model.EntityMeta, q query.Query) Compiled {
 	// HAVING
 	if q.Having != nil {
 		b.WriteString(" HAVING ")
-		c.compileNode(&b, &params, q.Having)
+		c.compileNode(b, params, q.Having)
 	}
+}
 
+// writeSelectTail emits the ORDER BY and LIMIT/OFFSET that follow a SELECT body
+// (or a set-operation compound, where they bind to the whole result).
+func (c *Compiler) writeSelectTail(b *strings.Builder, params *[]any, meta *model.EntityMeta, q query.Query) {
 	// ORDER BY
 	for i, s := range q.OrderBy {
 		if i == 0 {
@@ -172,7 +195,7 @@ func (c *Compiler) Select(meta *model.EntityMeta, q query.Query) Compiled {
 			b.WriteString(", ")
 		}
 		if s.Case != nil {
-			c.compileCaseExpr(&b, &params, meta, *s.Case)
+			c.compileCaseExpr(b, params, meta, *s.Case)
 		} else {
 			col := fieldColumn(meta, s.Field)
 			b.WriteString(c.quote(col))
@@ -202,8 +225,6 @@ func (c *Compiler) Select(meta *model.EntityMeta, q query.Query) Compiled {
 			b.WriteString(fmt.Sprintf(" OFFSET %d", q.Offset))
 		}
 	}
-
-	return Compiled{SQL: b.String(), Params: params}
 }
 
 // Insert compiles an INSERT statement for all fields of an entity.

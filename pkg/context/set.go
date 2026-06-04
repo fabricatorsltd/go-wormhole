@@ -43,6 +43,13 @@ type EntitySet struct {
 	tracking      trackMode
 	distinct      bool
 	selectCols    []string
+	setOps        []setOpSpec
+}
+
+// setOpSpec pairs a set operation with the EntitySet whose query is the operand.
+type setOpSpec struct {
+	kind  query.SetOpKind
+	other *EntitySet
 }
 
 // NoTracking runs this query without attaching the result to the change
@@ -232,6 +239,33 @@ func (s *EntitySet) From(table string) *EntitySet {
 // Chainable.
 func (s *EntitySet) Where(nodes ...query.Node) *EntitySet {
 	s.preds = append(s.preds, nodes...)
+	return s
+}
+
+// Union combines this query with another EntitySet's via UNION (duplicate rows
+// removed). Both sets should produce the same columns. Sort and limit the
+// combined result on this (outer) set; ORDER BY / Limit on the operand are
+// ignored. Chainable.
+func (s *EntitySet) Union(other *EntitySet) *EntitySet {
+	s.setOps = append(s.setOps, setOpSpec{kind: query.SetUnion, other: other})
+	return s
+}
+
+// UnionAll is Union without duplicate removal. Chainable.
+func (s *EntitySet) UnionAll(other *EntitySet) *EntitySet {
+	s.setOps = append(s.setOps, setOpSpec{kind: query.SetUnionAll, other: other})
+	return s
+}
+
+// Intersect keeps only rows present in both queries. Chainable.
+func (s *EntitySet) Intersect(other *EntitySet) *EntitySet {
+	s.setOps = append(s.setOps, setOpSpec{kind: query.SetIntersect, other: other})
+	return s
+}
+
+// Except keeps rows in this query that are not in the other. Chainable.
+func (s *EntitySet) Except(other *EntitySet) *EntitySet {
+	s.setOps = append(s.setOps, setOpSpec{kind: query.SetExcept, other: other})
 	return s
 }
 
@@ -647,6 +681,19 @@ func (s *EntitySet) buildQuery() query.Query {
 			b.LeftJoin(j.Entity, j.On)
 		default:
 			b.Join(j.Entity, j.On)
+		}
+	}
+	for _, so := range s.setOps {
+		operand := so.other.buildQuery()
+		switch so.kind {
+		case query.SetUnionAll:
+			b.UnionAll(operand)
+		case query.SetIntersect:
+			b.Intersect(operand)
+		case query.SetExcept:
+			b.Except(operand)
+		default:
+			b.Union(operand)
 		}
 	}
 	return b.Build()

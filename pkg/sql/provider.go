@@ -129,6 +129,7 @@ func sqlCapabilities() provider.Capabilities {
 		OffsetPagination: true,
 		SchemaMigrations: true,
 		Subqueries:       true,
+		SetOperations:    true,
 	}
 }
 

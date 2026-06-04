@@ -42,6 +42,38 @@ type Subquery struct {
 
 func (Subquery) nodeTag() {}
 
+// SetOpKind is a set operation that combines two SELECTs.
+type SetOpKind int
+
+const (
+	SetUnion     SetOpKind = iota // UNION (distinct)
+	SetUnionAll                   // UNION ALL
+	SetIntersect                  // INTERSECT
+	SetExcept                     // EXCEPT
+)
+
+// Keyword returns the SQL keyword for the set operation.
+func (k SetOpKind) Keyword() string {
+	switch k {
+	case SetUnionAll:
+		return "UNION ALL"
+	case SetIntersect:
+		return "INTERSECT"
+	case SetExcept:
+		return "EXCEPT"
+	default:
+		return "UNION"
+	}
+}
+
+// SetOp combines the carrying query with a second query via a set operation.
+// The operand's ORDER BY / LIMIT are ignored (a compound term cannot carry
+// them); sort and limit the combined result on the outer query.
+type SetOp struct {
+	Kind  SetOpKind
+	Query Query
+}
+
 // Sort represents a single ORDER BY clause.
 //
 // When Case is non-nil it takes precedence: the compiler emits the CASE
@@ -96,4 +128,5 @@ type Query struct {
 	Joins      []JoinSpec  // additional tables joined via JOIN clauses
 	Distinct   bool        // emit SELECT DISTINCT
 	Columns    []string    // projected columns (field or column names); empty selects all
+	SetOps     []SetOp     // UNION / INTERSECT / EXCEPT operands combined with this query
 }

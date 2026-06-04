@@ -181,6 +181,7 @@ type Capabilities struct {
 	SchemaMigrations bool
 	SchemaEvolution  bool
 	Subqueries       bool
+	SetOperations    bool
 }
 
 // CapabilityReporter is an optional interface for providers that
@@ -212,6 +213,14 @@ func ValidateQueryCapabilities(meta *model.EntityMeta, c Capabilities, q query.Q
 	}
 	if err := validateSubqueries(c, q.Where); err != nil {
 		return q, err
+	}
+	if len(q.SetOps) > 0 {
+		if !c.SetOperations {
+			return q, fmt.Errorf("provider does not support set operations (UNION/INTERSECT/EXCEPT)")
+		}
+		if err := validateSetOps(q); err != nil {
+			return q, err
+		}
 	}
 	if (len(q.GroupBy) > 0 || len(q.Aggregates) > 0 || q.Having != nil) && !c.Aggregations {
 		return q, fmt.Errorf("provider does not support aggregations")
@@ -245,6 +254,34 @@ func validateSubqueries(c Capabilities, node query.Node) error {
 				return err
 			}
 		}
+	}
+	return nil
+}
+
+// validateSetOps rejects set-operation shapes that are not portable across the
+// supported databases.
+//
+//   - Mixing INTERSECT with UNION/EXCEPT in one flat compound: INTERSECT binds
+//     tighter than UNION/EXCEPT on PostgreSQL/MySQL/SQL Server, but SQLite
+//     evaluates all operators left to right, so the same query returns different
+//     rows per backend. Reject until parenthesized operands exist.
+//   - Outer Distinct with set operations: SELECT DISTINCT binds only to the
+//     first operand, not the compound, which is almost never intended (UNION
+//     already removes duplicates).
+func validateSetOps(q query.Query) error {
+	if q.Distinct {
+		return fmt.Errorf("Distinct cannot combine with set operations; UNION already removes duplicates")
+	}
+	hasIntersect, hasOther := false, false
+	for _, o := range q.SetOps {
+		if o.Kind == query.SetIntersect {
+			hasIntersect = true
+		} else {
+			hasOther = true
+		}
+	}
+	if hasIntersect && hasOther {
+		return fmt.Errorf("mixing INTERSECT with UNION/EXCEPT in one query is not portable (operator precedence differs across databases); split into separate queries")
 	}
 	return nil
 }
