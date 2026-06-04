@@ -131,6 +131,7 @@ func sqlCapabilities() provider.Capabilities {
 		Subqueries:       true,
 		SetOperations:    true,
 		CaseExpressions:  true,
+		JSONQueries:      true,
 	}
 }
 

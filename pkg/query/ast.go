@@ -17,6 +17,9 @@ type Predicate struct {
 	Value any
 	Table string    // optional: table qualifier for joined queries
 	Case  *CaseExpr // optional: a CASE expression in place of Field on the left side
+	// JSONPath, when set, makes the left side a JSON extraction of Field at this
+	// dotted path (e.g. "address.city") rather than the bare column. SQL only.
+	JSONPath string
 }
 
 func (Predicate) nodeTag() {}

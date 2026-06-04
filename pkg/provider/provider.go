@@ -183,6 +183,7 @@ type Capabilities struct {
 	Subqueries       bool
 	SetOperations    bool
 	CaseExpressions  bool
+	JSONQueries      bool
 }
 
 // CapabilityReporter is an optional interface for providers that
@@ -225,6 +226,9 @@ func ValidateQueryCapabilities(meta *model.EntityMeta, c Capabilities, q query.Q
 	}
 	if !c.CaseExpressions && (len(q.CaseSelects) > 0 || whereHasCase(q.Where)) {
 		return q, fmt.Errorf("provider does not support CASE expressions")
+	}
+	if !c.JSONQueries && whereHasJSONPath(q.Where) {
+		return q, fmt.Errorf("provider does not support JSON path queries")
 	}
 	if len(q.CaseSelects) > 0 && len(q.Aggregates) > 0 {
 		return q, fmt.Errorf("CASE projections cannot be combined with aggregates in one query")
@@ -305,6 +309,25 @@ func whereHasCase(node query.Node) bool {
 				return true
 			}
 		}
+	}
+	return false
+}
+
+// whereHasJSONPath reports whether any predicate in a WHERE tree extracts a JSON
+// path, recursing through composites and subqueries so a buried node cannot slip
+// past a backend that does not understand it.
+func whereHasJSONPath(node query.Node) bool {
+	switch n := node.(type) {
+	case query.Predicate:
+		return n.JSONPath != ""
+	case query.Composite:
+		for _, child := range n.Children {
+			if whereHasJSONPath(child) {
+				return true
+			}
+		}
+	case query.Subquery:
+		return whereHasJSONPath(n.Query.Where)
 	}
 	return false
 }

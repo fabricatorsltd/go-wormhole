@@ -876,6 +876,51 @@ func (c *Compiler) compileCaseExpr(b *strings.Builder, params *[]any, meta *mode
 // built via the pointer-tracking DSL always carry the source table and
 // therefore render qualified — which is correct in joined queries and
 // harmlessly verbose in single-table ones.
+// writeJSONExtract renders a dialect-specific extraction of a dotted path from a
+// JSON column. The json tag stores JSON as text, so PostgreSQL casts to jsonb
+// (its -> operators do not work on text). The path is sanitized to identifier
+// characters because JSON paths cannot be bound as parameters.
+func (c *Compiler) writeJSONExtract(b *strings.Builder, table, field, path string) {
+	segs := sanitizeJSONPath(path)
+
+	var col strings.Builder
+	c.writeColumnRef(&col, table, field)
+	ref := col.String()
+
+	switch c.dialect() {
+	case "postgres":
+		b.WriteString("(" + ref + "::jsonb #>> '{" + strings.Join(segs, ",") + "}')")
+	case "mysql":
+		b.WriteString("JSON_UNQUOTE(JSON_EXTRACT(" + ref + ", '$." + strings.Join(segs, ".") + "'))")
+	case "mssql":
+		b.WriteString("JSON_VALUE(" + ref + ", '$." + strings.Join(segs, ".") + "')")
+	default: // sqlite
+		b.WriteString("json_extract(" + ref + ", '$." + strings.Join(segs, ".") + "')")
+	}
+}
+
+// sanitizeJSONPath splits a dotted path and keeps only identifier characters in
+// each segment. JSON paths are interpolated into the SQL string (they cannot be
+// bound), so this is the injection guard.
+func sanitizeJSONPath(path string) []string {
+	raw := strings.Split(path, ".")
+	out := make([]string, 0, len(raw))
+	for _, seg := range raw {
+		clean := strings.Map(func(r rune) rune {
+			switch {
+			case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_':
+				return r
+			default:
+				return -1
+			}
+		}, seg)
+		if clean != "" {
+			out = append(out, clean)
+		}
+	}
+	return out
+}
+
 func (c *Compiler) writeColumnRef(b *strings.Builder, table, field string) {
 	if table != "" {
 		b.WriteString(c.quote(table))
@@ -936,10 +981,14 @@ func (c *Compiler) writeSubSelect(b *strings.Builder, params *[]any, q query.Que
 }
 
 func (c *Compiler) compilePredicate(b *strings.Builder, params *[]any, p query.Predicate) {
-	// The left side is normally a column, but may be a CASE expression.
-	if p.Case != nil {
+	// The left side is normally a column, but may be a CASE expression or a JSON
+	// path extraction.
+	switch {
+	case p.Case != nil:
 		c.compileCaseExpr(b, params, nil, *p.Case)
-	} else {
+	case p.JSONPath != "":
+		c.writeJSONExtract(b, p.Table, p.Field, p.JSONPath)
+	default:
 		c.writeColumnRef(b, p.Table, p.Field)
 	}
 

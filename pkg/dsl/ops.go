@@ -44,6 +44,41 @@ func Lte[B any, F any](base *B, fieldPtr *F, val F) Condition {
 	return cond(base, fieldPtr, query.OpLte, val)
 }
 
+// JSONEq builds an equality predicate against a JSON path inside a json-tagged
+// column: WHERE <json-extract(column, path)> = val. The path is dotted, e.g.
+// "address.city". SQL providers only.
+//
+//	u := &User{}
+//	dsl.JSONEq(u, &u.Profile, "address.city", "Berlin")
+func JSONEq[B any, F any](base *B, fieldPtr *F, path string, val any) Condition {
+	return jsonCond(base, fieldPtr, path, query.OpEq, val)
+}
+
+// JSONNeq builds a not-equal predicate against a JSON path.
+func JSONNeq[B any, F any](base *B, fieldPtr *F, path string, val any) Condition {
+	return jsonCond(base, fieldPtr, path, query.OpNeq, val)
+}
+
+// JSONGt builds a greater-than predicate against a JSON path. Note: ordering of
+// numeric JSON values is not portable. SQLite extracts a native number and
+// compares numerically; PostgreSQL, MySQL, and SQL Server extract text and
+// compare lexically (so "10" sorts before "9"). Only string comparisons are
+// uniform across dialects.
+func JSONGt[B any, F any](base *B, fieldPtr *F, path string, val any) Condition {
+	return jsonCond(base, fieldPtr, path, query.OpGt, val)
+}
+
+// JSONLt builds a less-than predicate against a JSON path. See JSONGt on the
+// non-portable ordering of numeric JSON values.
+func JSONLt[B any, F any](base *B, fieldPtr *F, path string, val any) Condition {
+	return jsonCond(base, fieldPtr, path, query.OpLt, val)
+}
+
+func jsonCond[B any, F any](base *B, fieldPtr *F, path string, op query.Op, val any) Condition {
+	fi, tm := resolveWithTypeMap(base, fieldPtr)
+	return Condition{Field: fi.Column, Op: op, Value: val, Table: tm.table, JSONPath: path}
+}
+
 // In builds an IN predicate.
 func In[B any, F any](base *B, fieldPtr *F, vals ...F) Condition {
 	fi, tm := resolveWithTypeMap(base, fieldPtr)
