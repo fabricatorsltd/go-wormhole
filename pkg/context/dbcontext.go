@@ -354,6 +354,20 @@ func (c *DbContext) applyEntry(ctx stdctx.Context, tx provider.Tx, e *model.Entr
 		return tx.Update(ctx, e.Meta, e.Entity, changed)
 	case model.Deleted:
 		pk := c.pkValue(e)
+		// Optimistic concurrency: guard the delete on the loaded version so a
+		// row changed by another transaction is not silently removed.
+		if e.Meta.Version != nil {
+			if vd, ok := tx.(provider.VersionedDeleter); ok {
+				rows, err := vd.DeleteVersioned(ctx, e.Meta, pk, c.versionValue(e))
+				if err != nil {
+					return err
+				}
+				if rows == 0 {
+					return provider.ErrConcurrencyConflict
+				}
+				return nil
+			}
+		}
 		return tx.Delete(ctx, e.Meta, pk)
 	default:
 		return nil
@@ -400,6 +414,18 @@ func (c *DbContext) pkValue(e *model.Entry) any {
 	}
 	if snap, ok := e.Snapshot[e.Meta.PrimaryKey.FieldName]; ok {
 		return snap
+	}
+	return nil
+}
+
+// versionValue returns the entity's loaded optimistic-concurrency version from
+// the snapshot, used to guard a delete.
+func (c *DbContext) versionValue(e *model.Entry) any {
+	if e.Meta.Version == nil {
+		return nil
+	}
+	if v, ok := e.Snapshot[e.Meta.Version.FieldName]; ok {
+		return v
 	}
 	return nil
 }

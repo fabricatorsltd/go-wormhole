@@ -164,6 +164,72 @@ func TestE2E_OptimisticConcurrency_RollbackKeepsInMemoryVersion(t *testing.T) {
 	}
 }
 
+// Deleting a versioned row that another transaction has since modified is
+// rejected with ErrConcurrencyConflict, and the row is left intact.
+func TestE2E_OptimisticConcurrency_DeleteConflict(t *testing.T) {
+	db := openConcurrencyDB(t)
+	defer db.Close()
+
+	c1 := wctx.New(wsql.New(db))
+	defer c1.Close()
+	c2 := wctx.New(wsql.New(db))
+	defer c2.Close()
+
+	var d1 vDoc
+	if err := c1.Set(&d1).Find(1); err != nil {
+		t.Fatal(err)
+	}
+	var d2 vDoc
+	if err := c2.Set(&d2).Find(1); err != nil {
+		t.Fatal(err)
+	}
+
+	// c1 bumps the version.
+	d1.Title = "edited"
+	if err := c1.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	// c2's delete is stale and must be rejected.
+	c2.Remove(&d2)
+	err := c2.Save()
+	if err == nil || !stderrors.Is(err, provider.ErrConcurrencyConflict) {
+		t.Fatalf("stale delete: want ErrConcurrencyConflict, got %v", err)
+	}
+
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM "v_doc" WHERE "id" = 1`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("row should remain after rejected delete, count = %d", n)
+	}
+}
+
+// Deleting a versioned row that has not changed succeeds.
+func TestE2E_OptimisticConcurrency_DeleteSucceeds(t *testing.T) {
+	db := openConcurrencyDB(t)
+	defer db.Close()
+	ctx := wctx.New(wsql.New(db))
+	defer ctx.Close()
+
+	var d vDoc
+	if err := ctx.Set(&d).Find(1); err != nil {
+		t.Fatal(err)
+	}
+	ctx.Remove(&d)
+	if err := ctx.Save(); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM "v_doc" WHERE "id" = 1`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("row should be deleted, count = %d", n)
+	}
+}
+
 // A second, non-conflicting save after reloading succeeds and bumps again.
 func TestE2E_OptimisticConcurrency_SequentialSavesBumpVersion(t *testing.T) {
 	db := openConcurrencyDB(t)

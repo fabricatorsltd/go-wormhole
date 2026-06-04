@@ -333,6 +333,27 @@ func (c *Compiler) Delete(meta *model.EntityMeta, pkValue any) Compiled {
 	return Compiled{SQL: sql, Params: []any{pkValue}}
 }
 
+// DeleteVersioned compiles a DELETE guarded on the optimistic-concurrency
+// version column, so the row is removed only if it has not changed since it was
+// loaded. Falls back to a plain Delete when the entity has no version column.
+func (c *Compiler) DeleteVersioned(meta *model.EntityMeta, pkValue, version any) Compiled {
+	if meta.Version == nil {
+		return c.Delete(meta, pkValue)
+	}
+	pkCol := "id"
+	if meta.PrimaryKey != nil {
+		pkCol = meta.PrimaryKey.Column
+	}
+	sql := fmt.Sprintf("DELETE FROM %s WHERE %s = %s AND %s = %s",
+		c.quote(meta.Name),
+		c.quote(pkCol),
+		c.ph(1),
+		c.quote(meta.Version.Column),
+		c.ph(2),
+	)
+	return Compiled{SQL: sql, Params: []any{pkValue, version}}
+}
+
 // DeleteWhere compiles a bulk DELETE … WHERE … from a query AST.
 // The AST's OrderBy/Limit/Offset/Aggregates/GroupBy/Having are ignored
 // because standard SQL DELETE does not support them portably.

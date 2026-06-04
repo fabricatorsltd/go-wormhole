@@ -213,6 +213,21 @@ func (p *Provider) Delete(ctx context.Context, meta *model.EntityMeta, pkValue a
 	})
 }
 
+func (p *Provider) DeleteVersioned(ctx context.Context, meta *model.EntityMeta, pkValue, version any) (int64, error) {
+	c := p.compiler.DeleteVersioned(meta, pkValue, version)
+	p.logQuery(c)
+	var rows int64
+	err := p.retryDo(ctx, func() error {
+		res, err := p.db.ExecContext(ctx, c.SQL, c.Params...)
+		if err != nil {
+			return err
+		}
+		rows, err = res.RowsAffected()
+		return err
+	})
+	return rows, err
+}
+
 // DeleteWhere implements provider.BulkDeleter for the SQL provider.
 // Emits a single DELETE … WHERE … against the entity table.
 // Returns rowsAffected, or -1 if the driver cannot report it.
@@ -419,6 +434,16 @@ func (t *sqlTx) Delete(ctx context.Context, meta *model.EntityMeta, pkValue any)
 	t.logQuery(c)
 	_, err := t.tx.ExecContext(ctx, c.SQL, c.Params...)
 	return err
+}
+
+func (t *sqlTx) DeleteVersioned(ctx context.Context, meta *model.EntityMeta, pkValue, version any) (int64, error) {
+	c := t.compiler.DeleteVersioned(meta, pkValue, version)
+	t.logQuery(c)
+	res, err := t.tx.ExecContext(ctx, c.SQL, c.Params...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 // DeleteWhere mirrors Provider.DeleteWhere for in-transaction bulk deletes.

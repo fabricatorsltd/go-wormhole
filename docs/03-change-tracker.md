@@ -235,5 +235,6 @@ if errors.Is(err, provider.ErrConcurrencyConflict) {
 
 On success the new version is written back onto the in-memory entity (after the
 transaction commits, so a rollback never leaves it ahead of the database).
-Optimistic concurrency is enforced by the SQL providers on updates; deletes are
-not version-guarded yet, and other backends ignore the token.
+Optimistic concurrency is enforced by the SQL providers on both updates and
+deletes (a delete of a row changed by another transaction returns
+`provider.ErrConcurrencyConflict`); other backends ignore the token.

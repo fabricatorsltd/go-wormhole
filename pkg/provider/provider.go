@@ -101,6 +101,15 @@ type BulkDeleter interface {
 	DeleteWhere(ctx context.Context, meta *model.EntityMeta, q query.Query) (int64, error)
 }
 
+// VersionedDeleter is an optional interface for providers that enforce
+// optimistic concurrency on delete. DeleteVersioned removes the row only if its
+// version column still equals the loaded value, returning the rows affected
+// (0 means the row was changed or deleted by another transaction). Both the
+// Provider and its Tx implement it for SQL backends.
+type VersionedDeleter interface {
+	DeleteVersioned(ctx context.Context, meta *model.EntityMeta, pkValue, version any) (int64, error)
+}
+
 // BulkUpdater is an optional interface a Provider may implement to update many
 // rows in a single statement, applying the given column assignments to every
 // row matching the query AST's WHERE clause. It does not load, track, or run
