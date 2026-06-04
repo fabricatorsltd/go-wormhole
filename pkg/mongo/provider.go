@@ -89,6 +89,9 @@ func (p *Provider) Insert(ctx context.Context, meta *model.EntityMeta, entity an
 	if meta.Discriminator != nil {
 		return nil, fmt.Errorf("mongo: single-table hierarchy (discriminator) is supported only on SQL providers")
 	}
+	if meta.HasOwnedTypes() {
+		return nil, fmt.Errorf("mongo: owned (complex) types flattened into columns are supported only on SQL providers")
+	}
 	doc := toDocument(meta, entity)
 	res, err := p.collection(meta).InsertOne(ctx, doc)
 	if err != nil {
@@ -119,6 +122,9 @@ func (p *Provider) Find(ctx context.Context, meta *model.EntityMeta, pkValue any
 	if meta.Discriminator != nil {
 		return fmt.Errorf("mongo: single-table hierarchy (discriminator) is supported only on SQL providers")
 	}
+	if meta.HasOwnedTypes() {
+		return fmt.Errorf("mongo: owned (complex) types flattened into columns are supported only on SQL providers")
+	}
 	var raw bson.M
 	err := p.collection(meta).FindOne(ctx, bson.D{{Key: "_id", Value: pkValue}}).Decode(&raw)
 	if err != nil {
@@ -128,6 +134,9 @@ func (p *Provider) Find(ctx context.Context, meta *model.EntityMeta, pkValue any
 }
 
 func (p *Provider) Execute(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error {
+	if meta.HasOwnedTypes() {
+		return fmt.Errorf("mongo: owned (complex) types flattened into columns are supported only on SQL providers")
+	}
 	if _, err := provider.ValidateQueryCapabilities(meta, p.Capabilities(), q); err != nil {
 		return err
 	}

@@ -28,6 +28,10 @@ type Provider struct {
 
 var _ provider.Provider = (*Provider)(nil)
 
+// errOwnedUnsupported is returned for entities carrying owned (complex) types
+// flattened into columns, which are an SQL-only mapping.
+var errOwnedUnsupported = fmt.Errorf("slipstream: owned (complex) types flattened into columns are supported only on SQL providers")
+
 var slipstreamCapabilities = provider.Capabilities{
 	Transactions:     true,
 	PartialUpdate:    true,
@@ -78,6 +82,9 @@ func (p *Provider) Close() error {
 // --- CRUD ---
 
 func (p *Provider) Insert(ctx context.Context, meta *model.EntityMeta, entity any) (any, error) {
+	if meta.HasOwnedTypes() {
+		return nil, errOwnedUnsupported
+	}
 	rec, pk := toRecord(meta, entity)
 	key := fmt.Sprintf("%s:%v", meta.Name, pk)
 	if err := p.eng.Put(ctx, key, rec, 0); err != nil {
@@ -87,6 +94,9 @@ func (p *Provider) Insert(ctx context.Context, meta *model.EntityMeta, entity an
 }
 
 func (p *Provider) Update(ctx context.Context, meta *model.EntityMeta, entity any, changed []string) error {
+	if meta.HasOwnedTypes() {
+		return errOwnedUnsupported
+	}
 	rec, pk := toRecord(meta, entity)
 	key := fmt.Sprintf("%s:%v", meta.Name, pk)
 
@@ -112,6 +122,9 @@ func (p *Provider) Delete(ctx context.Context, meta *model.EntityMeta, pkValue a
 }
 
 func (p *Provider) Find(ctx context.Context, meta *model.EntityMeta, pkValue any, dest any) error {
+	if meta.HasOwnedTypes() {
+		return errOwnedUnsupported
+	}
 	key := fmt.Sprintf("%s:%v", meta.Name, pkValue)
 	rec, err := p.eng.Get(ctx, key)
 	if err != nil {
@@ -123,6 +136,9 @@ func (p *Provider) Find(ctx context.Context, meta *model.EntityMeta, pkValue any
 // --- Query ---
 
 func (p *Provider) Execute(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error {
+	if meta.HasOwnedTypes() {
+		return errOwnedUnsupported
+	}
 	if _, err := provider.ValidateQueryCapabilities(meta, p.Capabilities(), q); err != nil {
 		return err
 	}

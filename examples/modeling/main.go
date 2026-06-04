@@ -48,6 +48,20 @@ type Profile struct {
 	Address Address `db:"column:address;json"`
 }
 
+// Geo is an owned value object flattened into its owner's columns.
+type Geo struct {
+	Lat float64 `db:"column:lat"`
+	Lng float64 `db:"column:lng"`
+}
+
+// Shipment owns two Geo points. Each is flattened into the shipment table under
+// its own column prefix: origin_lat, origin_lng, dest_lat, dest_lng.
+type Shipment struct {
+	ID     int `db:"column:id;primary_key"`
+	Origin Geo `db:"owned;prefix:origin_"`
+	Dest   Geo `db:"owned;prefix:dest_"`
+}
+
 // CardPayment and WirePayment share the "payment" table. The kind column is the
 // discriminator; each type owns one value of it.
 type CardPayment struct {
@@ -68,6 +82,7 @@ func init() {
 	dsl.Register(OrderLine{})
 	dsl.Register(Invoice{})
 	dsl.Register(Profile{})
+	dsl.Register(Shipment{})
 	dsl.Register(CardPayment{})
 	dsl.Register(WirePayment{})
 }
@@ -82,6 +97,7 @@ func main() {
 	compositeKeys(ctx)
 	computedColumn(ctx)
 	jsonValueObject(ctx)
+	ownedValueObject(ctx)
 	singleTableHierarchy(ctx)
 }
 
@@ -114,6 +130,20 @@ func jsonValueObject(ctx *wh.DbContext) {
 	var p Profile
 	must(ctx.Set(&p).Find(1))
 	fmt.Printf("json value object: %s lives in %s\n", p.Name, p.Address.City)
+}
+
+func ownedValueObject(ctx *wh.DbContext) {
+	ctx.Add(&Shipment{
+		ID:     1,
+		Origin: Geo{Lat: 37.77, Lng: -122.42},
+		Dest:   Geo{Lat: 40.71, Lng: -74.01},
+	})
+	must(ctx.Save())
+
+	var s Shipment
+	must(ctx.Set(&s).Find(1))
+	fmt.Printf("owned value object: origin (%.2f, %.2f) -> dest (%.2f, %.2f)\n",
+		s.Origin.Lat, s.Origin.Lng, s.Dest.Lat, s.Dest.Lng)
 }
 
 func singleTableHierarchy(ctx *wh.DbContext) {
@@ -160,6 +190,12 @@ func open() *sql.DB {
 			"id"      INTEGER PRIMARY KEY,
 			"name"    TEXT NOT NULL,
 			"address" TEXT NOT NULL);
+		CREATE TABLE "shipment" (
+			"id"         INTEGER PRIMARY KEY,
+			"origin_lat" REAL NOT NULL,
+			"origin_lng" REAL NOT NULL,
+			"dest_lat"   REAL NOT NULL,
+			"dest_lng"   REAL NOT NULL);
 		CREATE TABLE "payment" (
 			"id"     INTEGER PRIMARY KEY,
 			"kind"   TEXT NOT NULL,

@@ -17,7 +17,7 @@ go run ./examples/unitofwork
 | [`crud`](crud)                   | Insert, find, in-memory mutation with partial UPDATE, delete          |
 | [`querying`](querying)           | DSL predicates, ordering, pagination, joins, grouped aggregates       |
 | [`advanced`](advanced)           | DISTINCT projections, subquery filters, set operations, CASE          |
-| [`modeling`](modeling)           | Composite keys, computed columns, JSON value objects, single-table hierarchy |
+| [`modeling`](modeling)           | Composite keys, computed columns, JSON and owned (flattened) value objects, single-table hierarchy |
 | [`relationships`](relationships) | 1:N, 1:1, belongs-to navigation fields and `Include` eager loading    |
 | [`unitofwork`](unitofwork)       | Query filters (multi-tenant / soft-delete), tracking, streaming, transactions |
 

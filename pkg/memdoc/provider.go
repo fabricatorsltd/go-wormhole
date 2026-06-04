@@ -91,6 +91,9 @@ func (p *Provider) Insert(ctx context.Context, meta *model.EntityMeta, entity an
 	if meta.Discriminator != nil {
 		return nil, fmt.Errorf("memdoc: single-table hierarchy (discriminator) is supported only on SQL providers")
 	}
+	if meta.HasOwnedTypes() {
+		return nil, fmt.Errorf("memdoc: owned (complex) types flattened into columns are supported only on SQL providers")
+	}
 	pkField := meta.PrimaryKey
 	if pkField == nil {
 		return nil, ErrMissingPrimaryKey
@@ -172,6 +175,9 @@ func (p *Provider) Find(ctx context.Context, meta *model.EntityMeta, pkValue any
 	if meta.Discriminator != nil {
 		return fmt.Errorf("memdoc: single-table hierarchy (discriminator) is supported only on SQL providers")
 	}
+	if meta.HasOwnedTypes() {
+		return fmt.Errorf("memdoc: owned (complex) types flattened into columns are supported only on SQL providers")
+	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	p.ensureOpen()
@@ -187,6 +193,9 @@ func (p *Provider) Find(ctx context.Context, meta *model.EntityMeta, pkValue any
 
 func (p *Provider) Execute(ctx context.Context, meta *model.EntityMeta, q query.Query, dest any) error {
 	_ = ctx
+	if meta.HasOwnedTypes() {
+		return fmt.Errorf("memdoc: owned (complex) types flattened into columns are supported only on SQL providers")
+	}
 	if _, err := provider.ValidateQueryCapabilities(meta, p.Capabilities(), q); err != nil {
 		return err
 	}

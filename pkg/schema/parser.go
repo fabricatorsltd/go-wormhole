@@ -1,6 +1,9 @@
 package schema
 
 import (
+	"database/sql"
+	"database/sql/driver"
+	"fmt"
 	"reflect"
 	"strings"
 	"sync"
@@ -72,6 +75,23 @@ func ParseType(t reflect.Type) *model.EntityMeta {
 			continue
 		}
 
+		// A non-pointer struct field that is not a recognized scalar is either an
+		// owned (complex) type to flatten into the owner's columns, or a model
+		// error. `json` keeps its current single-column treatment.
+		if sf.Type.Kind() == reflect.Struct && !isScalarStruct(sf.Type) && !fm.Has("json") {
+			if fm.Has("owned") {
+				prefix := util.ToSnake(fm.Name) + "_"
+				if fm.Has("prefix") {
+					prefix = fm.Get("prefix")
+				}
+				meta.Fields = append(meta.Fields, flattenOwned(sf, prefix)...)
+				continue
+			}
+			if !implementsSQLScalar(sf.Type) {
+				panic(fmt.Sprintf("wormhole: field %s.%s is a struct; tag it `owned` to flatten it into columns or `json` to store it as a JSON column", t.Name(), sf.Name))
+			}
+		}
+
 		col := fm.Get("column")
 		if col == "" {
 			col = util.ToSnake(sf.Name)
@@ -100,6 +120,7 @@ func ParseType(t reflect.Type) *model.EntityMeta {
 			Indexed:    fm.Has("index") || fm.Has("unique") || fm.Has("unique_index"),
 			Unique:     fm.Has("unique") || fm.Has("unique_index"),
 			Computed:   fm.Has("computed"),
+			Path:       append([]int(nil), sf.Index...),
 		}
 
 		if v := fm.Get("type"); v != "" {
@@ -194,6 +215,60 @@ func relationTarget(t reflect.Type) reflect.Type {
 // value (mapped to a column) rather than a related entity.
 func isScalarStruct(t reflect.Type) bool {
 	return t == reflect.TypeOf(time.Time{})
+}
+
+var (
+	valuerType  = reflect.TypeOf((*driver.Valuer)(nil)).Elem()
+	scannerType = reflect.TypeOf((*sql.Scanner)(nil)).Elem()
+)
+
+// implementsSQLScalar reports whether t (or *t) speaks the database/sql scalar
+// protocol via driver.Valuer or sql.Scanner. Such structs (sql.NullString,
+// uuid.UUID, decimal.Decimal, ...) map to a single column as-is and must not be
+// mistaken for an unmapped owned type.
+func implementsSQLScalar(t reflect.Type) bool {
+	pt := reflect.PtrTo(t)
+	return t.Implements(valuerType) || pt.Implements(valuerType) ||
+		t.Implements(scannerType) || pt.Implements(scannerType)
+}
+
+// flattenOwned expands an owned (complex) struct field into one FieldMeta per
+// leaf, each carrying the owner-relative reflect path and a prefixed column.
+// Nesting is one level deep: an owned field inside an owned field is rejected.
+func flattenOwned(owner reflect.StructField, prefix string) []model.FieldMeta {
+	sub := parser.ParseType(owner.Type)
+	out := make([]model.FieldMeta, 0, len(sub))
+	for _, sfm := range sub {
+		ssf, ok := owner.Type.FieldByName(sfm.Name)
+		if !ok {
+			continue
+		}
+		if ssf.Type.Kind() == reflect.Struct && !isScalarStruct(ssf.Type) &&
+			!sfm.Has("json") && !implementsSQLScalar(ssf.Type) {
+			panic(fmt.Sprintf("wormhole: owned field %s.%s is itself a struct; owned types flatten one level only", owner.Name, ssf.Name))
+		}
+
+		col := sfm.Get("column")
+		if col == "" {
+			col = util.ToSnake(ssf.Name)
+		}
+		field := model.FieldMeta{
+			FieldName: owner.Name + "." + sfm.Name,
+			Column:    prefix + col,
+			GoType:    ssf.Type,
+			Tags:      make(map[string]string),
+			Nullable:  sfm.Has("nullable"),
+			Path:      append(append([]int(nil), owner.Index...), ssf.Index...),
+		}
+		if v := sfm.Get("type"); v != "" {
+			field.Tags["type"] = v
+		}
+		if sfm.Has("json") {
+			field.Tags["json"] = "true"
+		}
+		out = append(out, field)
+	}
+	return out
 }
 
 // normalizeOnDelete maps an on_delete tag value to its SQL referential action,

@@ -640,8 +640,9 @@ func structToMap(meta *model.EntityMeta, entity any) map[string]any {
 		val = val.Elem()
 	}
 	m := make(map[string]any, len(meta.Fields))
-	for _, f := range meta.Fields {
-		v := val.FieldByName(f.FieldName).Interface()
+	for i := range meta.Fields {
+		f := &meta.Fields[i]
+		v := f.ValueIn(val).Interface()
 		// `json`-tagged fields are serialized to a JSON text/blob column.
 		if _, ok := f.Tags["json"]; ok {
 			if b, err := json.Marshal(v); err == nil {
@@ -763,7 +764,7 @@ func scanRow(meta *model.EntityMeta, row *sql.Row, dest any) error {
 	ptrs := make([]any, len(meta.Fields))
 	for i := range meta.Fields {
 		fm := &meta.Fields[i]
-		ptrs[i] = scanTarget(val.FieldByName(fm.FieldName), fm)
+		ptrs[i] = scanTarget(fm.ValueIn(val), fm)
 	}
 	return row.Scan(ptrs...)
 }
@@ -824,7 +825,7 @@ func scanElem(rows *sql.Rows, cols []string, colToField map[string]*model.FieldM
 	ptrs := make([]any, len(cols))
 	for i, col := range cols {
 		if fm, ok := colToField[col]; ok {
-			ptrs[i] = scanTarget(target.FieldByName(fm.FieldName), fm)
+			ptrs[i] = scanTarget(fm.ValueIn(target), fm)
 		} else {
 			var discard any
 			ptrs[i] = &discard

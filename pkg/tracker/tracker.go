@@ -136,14 +136,15 @@ func ChangedFields(e *model.Entry) []string {
 	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
 	}
-	for _, f := range e.Meta.Fields {
+	for i := range e.Meta.Fields {
+		f := &e.Meta.Fields[i]
 		// Computed columns are database-generated and read-only; a server-side
 		// change must not be reported as dirty (an UPDATE writing the column
 		// would be rejected by the database).
 		if f.Computed {
 			continue
 		}
-		cur := val.FieldByName(f.FieldName).Interface()
+		cur := f.ValueIn(val).Interface()
 		old, exists := e.Snapshot[f.FieldName]
 		if !exists || !reflect.DeepEqual(cur, old) {
 			changed = append(changed, f.FieldName)
@@ -160,8 +161,9 @@ func snapshot(meta *model.EntityMeta, entity any) map[string]any {
 		val = val.Elem()
 	}
 	snap := make(map[string]any, len(meta.Fields))
-	for _, f := range meta.Fields {
-		snap[f.FieldName] = val.FieldByName(f.FieldName).Interface()
+	for i := range meta.Fields {
+		f := &meta.Fields[i]
+		snap[f.FieldName] = f.ValueIn(val).Interface()
 	}
 	return snap
 }

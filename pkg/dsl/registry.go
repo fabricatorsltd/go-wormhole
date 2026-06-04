@@ -78,9 +78,10 @@ func Register(v any) {
 
 		col := util.ToSnake(sf.Name)
 
+		var parsedTags map[string][]string
 		tagStr := sf.Tag.Get("db")
 		if tagStr != "" {
-			parsedTags := parser.Parse(tagStr)
+			parsedTags = parser.Parse(tagStr)
 			if vals := parsedTags["column"]; len(vals) > 0 {
 				col = vals[0]
 			}
@@ -90,6 +91,18 @@ func Register(v any) {
 			if vals := parsedTags["table"]; len(vals) > 0 && vals[0] != "" {
 				tm.table = vals[0]
 			}
+		}
+
+		// An owned (complex) type is flattened into the owner's columns; register
+		// each leaf at its cumulative offset so field pointers like
+		// &owner.Address.Street resolve to the prefixed column.
+		if _, owned := parsedTags["owned"]; owned && sf.Type.Kind() == reflect.Struct {
+			prefix := util.ToSnake(sf.Name) + "_"
+			if vals := parsedTags["prefix"]; len(vals) > 0 {
+				prefix = vals[0]
+			}
+			tm.registerOwned(sf, prefix)
+			continue
 		}
 
 		fi := fieldInfo{
@@ -103,6 +116,34 @@ func Register(v any) {
 	}
 
 	registry[t] = tm
+}
+
+// registerOwned registers each leaf of an owned (complex) struct field at its
+// cumulative offset within the entity, so a field pointer into the nested value
+// object resolves to the prefixed storage column. Nesting is one level deep,
+// matching the schema parser.
+func (tm *typeMap) registerOwned(owner reflect.StructField, prefix string) {
+	for i := 0; i < owner.Type.NumField(); i++ {
+		sf := owner.Type.Field(i)
+		if !sf.IsExported() {
+			continue
+		}
+		col := util.ToSnake(sf.Name)
+		if tagStr := sf.Tag.Get("db"); tagStr != "" {
+			if vals := parser.Parse(tagStr)["column"]; len(vals) > 0 {
+				col = vals[0]
+			}
+		}
+		off := owner.Offset + sf.Offset
+		fi := fieldInfo{
+			Name:   owner.Name + "." + sf.Name,
+			Column: prefix + col,
+			Offset: off,
+			Type:   sf.Type,
+		}
+		tm.fields = append(tm.fields, fi)
+		tm.byOff[off] = &tm.fields[len(tm.fields)-1]
+	}
 }
 
 // MustRegister is like Register but also returns the zero-value pointer
