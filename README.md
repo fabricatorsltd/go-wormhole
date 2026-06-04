@@ -78,6 +78,13 @@ wormhole database update
 | [08 — Relationships](docs/08-relationships.md) | 1:1, 1:N, N:M declarations, eager loading with Include |
 | [09 — Global CLI Tool](docs/09-global-cli.md) | Entity Framework-like CLI experience |
 
+## Examples
+
+Runnable programs in [`examples/`](examples) cover CRUD, querying, advanced query
+shapes (DISTINCT, subqueries, set operations, CASE), and modeling (composite keys,
+computed columns, JSON value objects, single-table hierarchy). Each runs on an
+in-memory database with no setup: `go run ./examples/crud`.
+
 ## Entity Framework Comparison
 
 | Entity Framework | go-wormhole |
