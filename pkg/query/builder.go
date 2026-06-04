@@ -70,6 +70,18 @@ func (b *Builder) LeftJoin(entity string, on Node) *Builder {
 	return b
 }
 
+// RightJoin attaches a RIGHT JOIN <entity> ON <on> clause to the query.
+func (b *Builder) RightJoin(entity string, on Node) *Builder {
+	b.q.Joins = append(b.q.Joins, JoinSpec{Type: JoinRight, Entity: entity, On: on})
+	return b
+}
+
+// FullJoin attaches a FULL JOIN <entity> ON <on> clause to the query.
+func (b *Builder) FullJoin(entity string, on Node) *Builder {
+	b.q.Joins = append(b.q.Joins, JoinSpec{Type: JoinFull, Entity: entity, On: on})
+	return b
+}
+
 // Distinct emits SELECT DISTINCT, collapsing duplicate result rows.
 func (b *Builder) Distinct() *Builder {
 	b.q.Distinct = true

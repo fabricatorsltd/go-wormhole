@@ -50,6 +50,40 @@ func TestCompileSelect_LeftJoin(t *testing.T) {
 	}
 }
 
+// TestCompileSelect_RightJoin emits RIGHT JOIN.
+func TestCompileSelect_RightJoin(t *testing.T) {
+	c := &wsql.Compiler{}
+	meta := testMeta()
+	q := query.From("users").
+		RightJoin("post", query.Predicate{
+			Field: "user_id", Table: "post",
+			Op:    query.OpEq,
+			Value: query.ColumnRef{Field: "id", Table: "users"},
+		}).
+		Build()
+	out := c.Select(meta, q)
+	if !strings.Contains(out.SQL, `RIGHT JOIN "post"`) {
+		t.Errorf("expected RIGHT JOIN: %s", out.SQL)
+	}
+}
+
+// TestCompileSelect_FullJoin emits FULL JOIN.
+func TestCompileSelect_FullJoin(t *testing.T) {
+	c := &wsql.Compiler{}
+	meta := testMeta()
+	q := query.From("users").
+		FullJoin("post", query.Predicate{
+			Field: "user_id", Table: "post",
+			Op:    query.OpEq,
+			Value: query.ColumnRef{Field: "id", Table: "users"},
+		}).
+		Build()
+	out := c.Select(meta, q)
+	if !strings.Contains(out.SQL, `FULL JOIN "post"`) {
+		t.Errorf("expected FULL JOIN: %s", out.SQL)
+	}
+}
+
 // TestCompileSelect_JoinWithFilteredJoinedColumn verifies a join column used
 // in WHERE is emitted with table-qualified syntax.
 func TestCompileSelect_JoinWithFilteredJoinedColumn(t *testing.T) {

@@ -400,6 +400,20 @@ func (s *EntitySet) LeftJoin(entity string, on query.Node) *EntitySet {
 	return s
 }
 
+// RightJoin attaches a RIGHT JOIN to the underlying query. Supported on
+// PostgreSQL, MySQL, SQL Server, and SQLite 3.39+.
+func (s *EntitySet) RightJoin(entity string, on query.Node) *EntitySet {
+	s.joins = append(s.joins, query.JoinSpec{Type: query.JoinRight, Entity: entity, On: on})
+	return s
+}
+
+// FullJoin attaches a FULL OUTER JOIN to the underlying query. Supported on
+// PostgreSQL, SQL Server, and SQLite 3.39+; MySQL has no FULL JOIN.
+func (s *EntitySet) FullJoin(entity string, on query.Node) *EntitySet {
+	s.joins = append(s.joins, query.JoinSpec{Type: query.JoinFull, Entity: entity, On: on})
+	return s
+}
+
 // Include eager-loads the named navigation relations after the main query
 // runs, using a separate batched query per relation (no cartesian JOIN).
 // Names are the Go navigation field names (e.g. "Orders", "Profile"); the
@@ -679,6 +693,10 @@ func (s *EntitySet) buildQuery() query.Query {
 		switch j.Type {
 		case query.JoinLeft:
 			b.LeftJoin(j.Entity, j.On)
+		case query.JoinRight:
+			b.RightJoin(j.Entity, j.On)
+		case query.JoinFull:
+			b.FullJoin(j.Entity, j.On)
 		default:
 			b.Join(j.Entity, j.On)
 		}
