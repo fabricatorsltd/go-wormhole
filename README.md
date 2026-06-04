@@ -24,6 +24,7 @@ ctx.Save() // → UPDATE "users" SET "age" = ? WHERE "id" = ?
 - **Cross-Engine Sync** — migrate data between different engines (e.g. MSSQL to Postgres) with identity/sequence handling
 - **Engine-Specific Naming** — automatic mapping between conventions (PascalCase for MSSQL, snake_case for others)
 - **Code-First Migrations** — EF Core-style differ, runner, CLI, scaffold, multi-dialect DDL
+- **Vector Search** - pgvector nearest-neighbor on PostgreSQL (L2 / cosine / inner-product distance). PostgreSQL only; see [Limitations](#limitations)
 - **Resilience** — retry with backoff, circuit breaker, aggregated MultiError
 - **Lifecycle Hooks** — `BeforeSave()`, `AfterInsert()` auto-discovered via reflection
 - **DI-ready** — first-class `go-foundation/pkg/di` integration
@@ -85,6 +86,19 @@ Runnable programs in [`examples/`](examples) cover CRUD, querying, advanced quer
 shapes (DISTINCT, subqueries, set operations, CASE), and modeling (composite keys,
 computed columns, JSON value objects, single-table hierarchy). Each runs on an
 in-memory database with no setup: `go run ./examples/crud`.
+
+## Limitations
+
+- **Vector search is PostgreSQL-only.** Nearest-neighbor search uses the
+  [pgvector](https://github.com/pgvector/pgvector) extension and is verified
+  end-to-end against pgvector 0.6 on PostgreSQL 16. A vector query on any other
+  provider returns an error rather than running.
+- **MongoDB `$vectorSearch` is not implemented.** Atlas vector search is powered
+  by `mongot`, an Atlas-only component that cannot be installed onto a self-hosted
+  MongoDB, so the native Mongo vector path was deferred and ships **untested** in
+  this release. It is gated off (vector queries on Mongo return an error), so it
+  fails closed rather than returning wrong results. Building and verifying it
+  needs an Atlas (cloud) or Atlas CLI local deployment.
 
 ## Entity Framework Comparison
 
