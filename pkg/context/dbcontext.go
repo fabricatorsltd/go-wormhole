@@ -20,13 +20,14 @@ import (
 // of a session: tracking entities, detecting changes, and flushing
 // them through the underlying Provider inside a transaction.
 type DbContext struct {
-	provider  provider.Provider
-	tracker   *tracker.Tracker
-	hooks     *hooks.Runner
-	retry     []func(*resiliency.RetryOptions)
-	readRetry []func(*resiliency.RetryOptions)
-	breaker   *resiliency.CircuitBreaker
-	stdCtx    stdctx.Context
+	provider     provider.Provider
+	tracker      *tracker.Tracker
+	hooks        *hooks.Runner
+	retry        []func(*resiliency.RetryOptions)
+	readRetry    []func(*resiliency.RetryOptions)
+	breaker      *resiliency.CircuitBreaker
+	stdCtx       stdctx.Context
+	queryFilters map[string][]query.Node
 }
 
 // Option configures a DbContext.
@@ -117,6 +118,39 @@ func (c *DbContext) Detach(entities ...any) {
 // Entry returns the tracking entry for an entity.
 func (c *DbContext) Entry(entity any) (*model.Entry, bool) {
 	return c.tracker.Entry(entity)
+}
+
+// AddQueryFilter registers a predicate that is automatically applied (ANDed
+// into the WHERE clause) to every query of the sample's entity type: All,
+// Find, bulk Update/Delete, and eager-loaded relations of that type. The
+// entity is identified from sample (a zero-value struct pointer is fine).
+//
+// This is the basis for soft-delete and multi-tenant isolation. Build the
+// predicate with the dsl for type safety; the value is captured at
+// registration, which fits the per-unit-of-work lifetime of a DbContext:
+//
+//	u := &User{}
+//	ctx.AddQueryFilter(&User{}, dsl.Eq(u, &u.TenantID, currentTenant))
+//
+// Use EntitySet.IgnoreFilters to run a query without the registered filters.
+//
+// Filters are keyed by entity name (snake_case of the Go type, ignoring the
+// package path), the same convention the rest of the ORM uses, so two distinct
+// types that share a name also share filters.
+func (c *DbContext) AddQueryFilter(sample any, filter query.Node) {
+	if filter == nil {
+		return
+	}
+	meta := schema.Parse(sample)
+	if c.queryFilters == nil {
+		c.queryFilters = make(map[string][]query.Node)
+	}
+	c.queryFilters[meta.Name] = append(c.queryFilters[meta.Name], filter)
+}
+
+// filtersFor returns the registered query filters for an entity name.
+func (c *DbContext) filtersFor(entity string) []query.Node {
+	return c.queryFilters[entity]
 }
 
 // Transaction runs fn inside a single provider transaction, committing on

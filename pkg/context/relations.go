@@ -69,11 +69,19 @@ func (s *EntitySet) loadInclude(ctx stdctx.Context, name string) error {
 		return nil
 	}
 
-	// Load children: SELECT * FROM child WHERE childKeyCol IN (keys).
+	// Load children: SELECT * FROM child WHERE childKeyCol IN (keys), with the
+	// child entity's registered query filters ANDed in so eager-loaded
+	// relations stay scoped (e.g. a tenant filter is not bypassed via Include).
 	childSlicePtr := reflect.New(reflect.SliceOf(reflect.PtrTo(rel.Target))) // *[]*Target
+	var where query.Node = query.Predicate{Field: childKeyCol, Op: query.OpIn, Value: keys}
+	if !s.ignoreFilters {
+		if f := s.ctx.filtersFor(childMeta.Name); len(f) > 0 {
+			where = query.Composite{Logic: query.LogicAnd, Children: append([]query.Node{where}, f...)}
+		}
+	}
 	q := query.Query{
 		EntityName: childMeta.Name,
-		Where:      query.Predicate{Field: childKeyCol, Op: query.OpIn, Value: keys},
+		Where:      where,
 	}
 	if err := s.ctx.withReadResilience(ctx, func() error {
 		return s.ctx.provider.Execute(ctx, childMeta, q, childSlicePtr.Interface())

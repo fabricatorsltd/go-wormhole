@@ -1,6 +1,8 @@
 package context
 
 import (
+	stdctx "context"
+	"database/sql"
 	"fmt"
 	"reflect"
 
@@ -26,6 +28,7 @@ type EntitySet struct {
 	aggregates    []query.Aggregate
 	joins         []query.JoinSpec
 	includes      []string
+	ignoreFilters bool
 }
 
 // Set creates an EntitySet bound to the given destination.
@@ -49,16 +52,74 @@ func (c *DbContext) Set(dest any) *EntitySet {
 	}
 }
 
+// IgnoreFilters runs this query without the DbContext's registered query
+// filters (the equivalent of EF Core's IgnoreQueryFilters). It applies to the
+// whole query, including eager-loaded relations. Chainable.
+func (s *EntitySet) IgnoreFilters() *EntitySet {
+	s.ignoreFilters = true
+	return s
+}
+
+// activeFilters returns the registered query filters that apply to this set,
+// or nil when filters are ignored.
+func (s *EntitySet) activeFilters() []query.Node {
+	if s.ignoreFilters {
+		return nil
+	}
+	return s.ctx.filtersFor(s.meta.Name)
+}
+
 // Find retrieves a single entity by primary key, populates dest,
 // and auto-tracks it as Unchanged.
+//
+// When query filters are registered for the entity, Find applies them too, so
+// a primary-key lookup cannot reach a row excluded by a filter (e.g. another
+// tenant's row, or a soft-deleted one). Use IgnoreFilters to bypass.
 func (s *EntitySet) Find(pk any) error {
 	ctx := s.ctx.opCtx()
-	err := s.ctx.withReadResilience(ctx, func() error {
-		return s.ctx.provider.Find(ctx, s.meta, pk, s.dest)
-	})
-	if err != nil {
+
+	filters := s.activeFilters()
+	if len(filters) == 0 {
+		err := s.ctx.withReadResilience(ctx, func() error {
+			return s.ctx.provider.Find(ctx, s.meta, pk, s.dest)
+		})
+		if err != nil {
+			return err
+		}
+		s.ctx.tracker.Attach(s.dest)
+		return nil
+	}
+	return s.findFiltered(ctx, pk, filters)
+}
+
+// findFiltered loads a single entity by primary key through the query path so
+// the registered filters apply. Returns sql.ErrNoRows when no row matches both
+// the key and the filters, matching the keyed-lookup Find.
+func (s *EntitySet) findFiltered(ctx stdctx.Context, pk any, filters []query.Node) error {
+	pkCol := "id"
+	if s.meta.PrimaryKey != nil {
+		pkCol = s.meta.PrimaryKey.Column
+	}
+
+	b := query.From(s.meta.Name)
+	preds := append([]query.Node{query.Predicate{Field: pkCol, Op: query.OpEq, Value: pk}}, filters...)
+	b.Filter(preds...)
+	b.Limit(1)
+	q := b.Build()
+
+	elem := reflect.TypeOf(s.dest).Elem()
+	slicePtr := reflect.New(reflect.SliceOf(reflect.PtrTo(elem))) // *[]*T
+	if err := s.ctx.withReadResilience(ctx, func() error {
+		return s.ctx.provider.Execute(ctx, s.meta, q, slicePtr.Interface())
+	}); err != nil {
 		return err
 	}
+
+	slice := slicePtr.Elem()
+	if slice.Len() == 0 {
+		return sql.ErrNoRows
+	}
+	reflect.ValueOf(s.dest).Elem().Set(slice.Index(0).Elem())
 	s.ctx.tracker.Attach(s.dest)
 	return nil
 }
@@ -279,8 +340,19 @@ func (s *EntitySet) buildQuery() query.Query {
 		tableName = s.tableOverride
 	}
 	b := query.From(tableName)
-	if len(s.preds) > 0 {
-		b.Filter(s.preds...)
+	// Apply the caller's predicates plus any registered query filters, ANDed
+	// together. Filters are keyed on the table actually queried (tableName), so
+	// a From() override onto a registered, filtered table is still scoped rather
+	// than reading across the filter. A local copy avoids mutating s.preds
+	// (buildQuery runs more than once, e.g. All then ToSQL).
+	preds := s.preds
+	if !s.ignoreFilters {
+		if f := s.ctx.filtersFor(tableName); len(f) > 0 {
+			preds = append(append([]query.Node{}, s.preds...), f...)
+		}
+	}
+	if len(preds) > 0 {
+		b.Filter(preds...)
 	}
 	for _, sort := range s.sorts {
 		if sort.Case != nil {
