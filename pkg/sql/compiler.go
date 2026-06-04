@@ -139,6 +139,18 @@ func (c *Compiler) writeSelectBody(b *strings.Builder, params *[]any, meta *mode
 			}
 			b.WriteString(c.quote(col))
 		}
+		// CASE expressions added to the projection, each aliased. Their THEN/ELSE
+		// params are appended here (before WHERE), keeping numbering continuous.
+		wrote := len(cols) > 0
+		for _, cs := range q.CaseSelects {
+			if wrote {
+				b.WriteString(", ")
+			}
+			c.compileCaseExpr(b, params, meta, cs.Expr)
+			b.WriteString(" AS ")
+			b.WriteString(c.quote(cs.Alias))
+			wrote = true
+		}
 	}
 
 	// FROM — use the entity name carried in the query so that aggregate
@@ -901,7 +913,12 @@ func (c *Compiler) writeSubSelect(b *strings.Builder, params *[]any, q query.Que
 }
 
 func (c *Compiler) compilePredicate(b *strings.Builder, params *[]any, p query.Predicate) {
-	c.writeColumnRef(b, p.Table, p.Field)
+	// The left side is normally a column, but may be a CASE expression.
+	if p.Case != nil {
+		c.compileCaseExpr(b, params, nil, *p.Case)
+	} else {
+		c.writeColumnRef(b, p.Table, p.Field)
+	}
 
 	// If the right-hand side is itself a column reference (typical for JOIN ON
 	// clauses), render "tableA"."colA" OP "tableB"."colB" with no placeholder.

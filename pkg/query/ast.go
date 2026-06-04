@@ -15,7 +15,8 @@ type Predicate struct {
 	Field string
 	Op    Op
 	Value any
-	Table string // optional: table qualifier for joined queries
+	Table string    // optional: table qualifier for joined queries
+	Case  *CaseExpr // optional: a CASE expression in place of Field on the left side
 }
 
 func (Predicate) nodeTag() {}
@@ -116,17 +117,25 @@ type Assignment struct {
 
 // Query is the root AST produced by the fluent QueryBuilder.
 type Query struct {
-	EntityName string
-	Where      Node
-	OrderBy    []Sort
-	Limit      int
-	Offset     int
-	Includes   []string    // eager-loaded relations
-	GroupBy    []string    // GROUP BY field names
-	Having     Node        // HAVING condition tree
-	Aggregates []Aggregate // aggregate expressions (COUNT, SUM, ...)
-	Joins      []JoinSpec  // additional tables joined via JOIN clauses
-	Distinct   bool        // emit SELECT DISTINCT
-	Columns    []string    // projected columns (field or column names); empty selects all
-	SetOps     []SetOp     // UNION / INTERSECT / EXCEPT operands combined with this query
+	EntityName  string
+	Where       Node
+	OrderBy     []Sort
+	Limit       int
+	Offset      int
+	Includes    []string     // eager-loaded relations
+	GroupBy     []string     // GROUP BY field names
+	Having      Node         // HAVING condition tree
+	Aggregates  []Aggregate  // aggregate expressions (COUNT, SUM, ...)
+	Joins       []JoinSpec   // additional tables joined via JOIN clauses
+	Distinct    bool         // emit SELECT DISTINCT
+	Columns     []string     // projected columns (field or column names); empty selects all
+	SetOps      []SetOp      // UNION / INTERSECT / EXCEPT operands combined with this query
+	CaseSelects []CaseSelect // CASE expressions added to the SELECT list, each aliased
+}
+
+// CaseSelect is a CASE expression projected into the SELECT list under an alias.
+// The result is scanned into the destination field mapped to that column name.
+type CaseSelect struct {
+	Expr  CaseExpr
+	Alias string
 }

@@ -130,6 +130,7 @@ func sqlCapabilities() provider.Capabilities {
 		SchemaMigrations: true,
 		Subqueries:       true,
 		SetOperations:    true,
+		CaseExpressions:  true,
 	}
 }
 

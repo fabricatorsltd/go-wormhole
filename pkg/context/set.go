@@ -44,6 +44,7 @@ type EntitySet struct {
 	distinct      bool
 	selectCols    []string
 	setOps        []setOpSpec
+	caseSelects   []query.CaseSelect
 }
 
 // setOpSpec pairs a set operation with the EntitySet whose query is the operand.
@@ -334,6 +335,14 @@ func canonicalColumn(meta *model.EntityMeta, name string) string {
 		return f.Column
 	}
 	return name
+}
+
+// SelectCase adds a CASE expression to the projection under an alias; the
+// result is scanned into the destination field mapped to that column name
+// (typically a DTO field). Build the expression with dsl.Case(). Chainable.
+func (s *EntitySet) SelectCase(expr query.CaseExpr, alias string) *EntitySet {
+	s.caseSelects = append(s.caseSelects, query.CaseSelect{Expr: expr, Alias: alias})
+	return s
 }
 
 // OrderBy appends a sort clause. Chainable.
@@ -652,6 +661,9 @@ func (s *EntitySet) buildQuery() query.Query {
 	}
 	if cols := s.projectedColumns(); len(cols) > 0 {
 		b.Select(cols...)
+	}
+	for _, cs := range s.caseSelects {
+		b.SelectCase(cs.Expr, cs.Alias)
 	}
 	// Apply the caller's predicates plus any registered query filters, ANDed
 	// together. Filters are keyed on the table actually queried (tableName), so

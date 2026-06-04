@@ -182,6 +182,7 @@ type Capabilities struct {
 	SchemaEvolution  bool
 	Subqueries       bool
 	SetOperations    bool
+	CaseExpressions  bool
 }
 
 // CapabilityReporter is an optional interface for providers that
@@ -221,6 +222,12 @@ func ValidateQueryCapabilities(meta *model.EntityMeta, c Capabilities, q query.Q
 		if err := validateSetOps(q); err != nil {
 			return q, err
 		}
+	}
+	if !c.CaseExpressions && (len(q.CaseSelects) > 0 || whereHasCase(q.Where)) {
+		return q, fmt.Errorf("provider does not support CASE expressions")
+	}
+	if len(q.CaseSelects) > 0 && len(q.Aggregates) > 0 {
+		return q, fmt.Errorf("CASE projections cannot be combined with aggregates in one query")
 	}
 	if (len(q.GroupBy) > 0 || len(q.Aggregates) > 0 || q.Having != nil) && !c.Aggregations {
 		return q, fmt.Errorf("provider does not support aggregations")
@@ -284,6 +291,22 @@ func validateSetOps(q query.Query) error {
 		return fmt.Errorf("mixing INTERSECT with UNION/EXCEPT in one query is not portable (operator precedence differs across databases); split into separate queries")
 	}
 	return nil
+}
+
+// whereHasCase reports whether any predicate in a WHERE tree uses a CASE
+// expression on its left side, recursing through composites.
+func whereHasCase(node query.Node) bool {
+	switch n := node.(type) {
+	case query.Predicate:
+		return n.Case != nil
+	case query.Composite:
+		for _, child := range n.Children {
+			if whereHasCase(child) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func normalizeAggregateQuery(meta *model.EntityMeta, q query.Query) (query.Query, error) {

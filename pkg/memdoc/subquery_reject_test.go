@@ -86,3 +86,47 @@ func TestMemDoc_RejectsSetOp(t *testing.T) {
 		t.Fatalf("memdoc should reject a set operation, got %v", err)
 	}
 }
+
+// A document store cannot evaluate SQL CASE expressions, so a CASE projection
+// must be rejected rather than silently dropped.
+func TestMemDoc_RejectsCaseProjection(t *testing.T) {
+	p := memdoc.New()
+	if err := p.Open(t.Context(), ""); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+
+	meta := schema.Parse(&sqUser{})
+	q := query.Query{
+		EntityName: meta.Name,
+		CaseSelects: []query.CaseSelect{{
+			Expr:  query.CaseExpr{Branches: []query.CaseBranch{{When: query.Predicate{Field: "id", Op: query.OpGt, Value: 0}, Then: "x"}}},
+			Alias: "label",
+		}},
+	}
+	var out []sqUser
+	if err := p.Execute(t.Context(), meta, q, &out); err == nil || !strings.Contains(err.Error(), "CASE") {
+		t.Fatalf("memdoc should reject a CASE projection, got %v", err)
+	}
+}
+
+// A CASE expression in a WHERE predicate must also be rejected on a document
+// store, not silently dropped (the guard walks the WHERE tree).
+func TestMemDoc_RejectsCaseInWhere(t *testing.T) {
+	p := memdoc.New()
+	if err := p.Open(t.Context(), ""); err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+
+	meta := schema.Parse(&sqUser{})
+	ce := query.CaseExpr{Branches: []query.CaseBranch{{When: query.Predicate{Field: "id", Op: query.OpGt, Value: 0}, Then: "x"}}}
+	q := query.Query{
+		EntityName: meta.Name,
+		Where:      query.Predicate{Case: &ce, Op: query.OpEq, Value: "x"},
+	}
+	var out []sqUser
+	if err := p.Execute(t.Context(), meta, q, &out); err == nil || !strings.Contains(err.Error(), "CASE") {
+		t.Fatalf("memdoc should reject a CASE in WHERE, got %v", err)
+	}
+}

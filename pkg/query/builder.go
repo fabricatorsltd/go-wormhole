@@ -119,6 +119,12 @@ func (b *Builder) Except(other Query) *Builder {
 	return b
 }
 
+// SelectCase adds a CASE expression to the SELECT list under an alias.
+func (b *Builder) SelectCase(expr CaseExpr, alias string) *Builder {
+	b.q.CaseSelects = append(b.q.CaseSelects, CaseSelect{Expr: expr, Alias: alias})
+	return b
+}
+
 // Limit sets the maximum number of results.
 func (b *Builder) Limit(n int) *Builder {
 	b.q.Limit = n
