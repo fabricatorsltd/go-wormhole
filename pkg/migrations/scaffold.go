@@ -224,7 +224,9 @@ func sqlTypeToGo(sqlType string, nullable bool) string {
 		base = "string"
 	case "BYTEA", "BLOB":
 		base = "[]byte"
-	case "TIMESTAMP", "TIMESTAMPTZ", "DATE", "DATETIME":
+	case "TIMESTAMP", "TIMESTAMPTZ", "DATE", "DATETIME", "TIME",
+		"TIMESTAMP WITH TIME ZONE", "TIMESTAMP WITHOUT TIME ZONE",
+		"TIME WITH TIME ZONE", "TIME WITHOUT TIME ZONE":
 		base = "time.Time"
 	case "SERIAL":
 		base = "int"

@@ -65,11 +65,19 @@ func main() {
 			os.Exit(1)
 		}
 	case "database":
-		if len(args) < 2 || args[1] != "update" {
+		if len(args) < 2 {
 			printUsage()
 			os.Exit(1)
 		}
-		cmdUpdate()
+		switch args[1] {
+		case "update":
+			cmdUpdate()
+		case "check":
+			cmdCheck()
+		default:
+			printUsage()
+			os.Exit(1)
+		}
 	default:
 		printUsage()
 		os.Exit(1)
@@ -248,6 +256,47 @@ func cmdUpdate() {
 	fmt.Printf("Database updated (%d migration(s) applied).\n", len(applied))
 }
 
+func cmdCheck() {
+	dsn := os.Getenv("WORMHOLE_DSN")
+	if dsn == "" {
+		fatal("WORMHOLE_DSN is required for database check")
+	}
+	driver := os.Getenv("WORMHOLE_DRIVER")
+	if driver == "" {
+		driver = "sqlite"
+	}
+
+	snap, err := migrations.LoadSnapshot(filepath.Join(migrationsDir(), snapshotFile))
+	if err != nil {
+		fatalf("read snapshot: %v", err)
+	}
+	if len(snap.Tables) == 0 {
+		fatal("no model snapshot found; run 'migrations add' first")
+	}
+
+	db, err := sql.Open(driver, dsn)
+	if err != nil {
+		fatalf("driver %q is not available in this wormhole binary: %v", driver, err)
+	}
+	defer db.Close()
+
+	live, err := migrations.IntrospectSchema(context.Background(), db)
+	if err != nil {
+		fatalf("introspect database: %v", err)
+	}
+
+	drifts := migrations.DetectDrift(snap, live)
+	if len(drifts) == 0 {
+		fmt.Println("No drift. The database matches the model snapshot.")
+		return
+	}
+	fmt.Fprintf(os.Stderr, "Database has drifted from the snapshot (%d difference(s)):\n", len(drifts))
+	for _, d := range drifts {
+		fmt.Fprintf(os.Stderr, "  - %s\n", d)
+	}
+	os.Exit(1)
+}
+
 func writeOrDie(path string, b []byte) {
 	if err := os.WriteFile(path, b, 0o644); err != nil {
 		fatalf("write %s: %v", path, err)
@@ -272,6 +321,7 @@ Usage:
   wormhole [-C dir] migrations list                   List migrations (applied/pending if DB reachable)
   wormhole [-C dir] migrations script <Name> [dialect] Render migrations as a .sql script
   wormhole [-C dir] database update                   Apply pending migrations
+  wormhole [-C dir] database check                    Warn if the database drifted from the snapshot
 
 Dialects: default, postgres, mysql, mssql
 
