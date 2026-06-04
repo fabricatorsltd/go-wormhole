@@ -135,6 +135,7 @@ func sqlCapabilities() provider.Capabilities {
 		CaseExpressions:  true,
 		JSONQueries:      true,
 		VectorSearch:     true,
+		Coalesce:         true,
 	}
 }
 

@@ -20,6 +20,7 @@ type Predicate struct {
 	// JSONPath, when set, makes the left side a JSON extraction of Field at this
 	// dotted path (e.g. "address.city") rather than the bare column. SQL only.
 	JSONPath string
+	Coalesce *CoalesceExpr // optional: a COALESCE expression in place of Field on the left
 }
 
 func (Predicate) nodeTag() {}
@@ -88,6 +89,7 @@ type Sort struct {
 	Dir      SortDir
 	Case     *CaseExpr       // optional CASE WHEN ... THEN ... expression
 	Distance *VectorDistance // optional pgvector distance expression (PostgreSQL only)
+	Coalesce *CoalesceExpr   // optional COALESCE(...) expression
 }
 
 // AggFunc is the type of an aggregate function.
@@ -121,20 +123,21 @@ type Assignment struct {
 
 // Query is the root AST produced by the fluent QueryBuilder.
 type Query struct {
-	EntityName  string
-	Where       Node
-	OrderBy     []Sort
-	Limit       int
-	Offset      int
-	Includes    []string     // eager-loaded relations
-	GroupBy     []string     // GROUP BY field names
-	Having      Node         // HAVING condition tree
-	Aggregates  []Aggregate  // aggregate expressions (COUNT, SUM, ...)
-	Joins       []JoinSpec   // additional tables joined via JOIN clauses
-	Distinct    bool         // emit SELECT DISTINCT
-	Columns     []string     // projected columns (field or column names); empty selects all
-	SetOps      []SetOp      // UNION / INTERSECT / EXCEPT operands combined with this query
-	CaseSelects []CaseSelect // CASE expressions added to the SELECT list, each aliased
+	EntityName      string
+	Where           Node
+	OrderBy         []Sort
+	Limit           int
+	Offset          int
+	Includes        []string         // eager-loaded relations
+	GroupBy         []string         // GROUP BY field names
+	Having          Node             // HAVING condition tree
+	Aggregates      []Aggregate      // aggregate expressions (COUNT, SUM, ...)
+	Joins           []JoinSpec       // additional tables joined via JOIN clauses
+	Distinct        bool             // emit SELECT DISTINCT
+	Columns         []string         // projected columns (field or column names); empty selects all
+	SetOps          []SetOp          // UNION / INTERSECT / EXCEPT operands combined with this query
+	CaseSelects     []CaseSelect     // CASE expressions added to the SELECT list, each aliased
+	CoalesceSelects []CoalesceSelect // COALESCE expressions added to the SELECT list, each aliased
 }
 
 // CaseSelect is a CASE expression projected into the SELECT list under an alias.

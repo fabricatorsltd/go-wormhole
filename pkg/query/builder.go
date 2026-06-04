@@ -63,6 +63,13 @@ func (b *Builder) OrderByDistance(d VectorDistance, dir SortDir) *Builder {
 	return b
 }
 
+// OrderByCoalesce appends a sort on a COALESCE expression (e.g. order by a
+// fallback value when the primary column is NULL).
+func (b *Builder) OrderByCoalesce(e CoalesceExpr, dir SortDir) *Builder {
+	b.q.OrderBy = append(b.q.OrderBy, Sort{Coalesce: &e, Dir: dir})
+	return b
+}
+
 // Join attaches an INNER JOIN <entity> ON <on> clause to the query.
 // The on predicate is typically produced by dsl.JoinEq for type-safety, but
 // any Predicate or Composite is accepted.
@@ -129,6 +136,13 @@ func (b *Builder) Except(other Query) *Builder {
 // SelectCase adds a CASE expression to the SELECT list under an alias.
 func (b *Builder) SelectCase(expr CaseExpr, alias string) *Builder {
 	b.q.CaseSelects = append(b.q.CaseSelects, CaseSelect{Expr: expr, Alias: alias})
+	return b
+}
+
+// SelectCoalesce projects a COALESCE expression into the SELECT list under an
+// alias, scanned into the destination field mapped to that column name.
+func (b *Builder) SelectCoalesce(expr CoalesceExpr, alias string) *Builder {
+	b.q.CoalesceSelects = append(b.q.CoalesceSelects, CoalesceSelect{Expr: expr, Alias: alias})
 	return b
 }
 

@@ -185,6 +185,7 @@ type Capabilities struct {
 	CaseExpressions  bool
 	JSONQueries      bool
 	VectorSearch     bool
+	Coalesce         bool
 }
 
 // CapabilityReporter is an optional interface for providers that
@@ -234,11 +235,17 @@ func ValidateQueryCapabilities(meta *model.EntityMeta, c Capabilities, q query.Q
 	if !c.CaseExpressions && (len(q.CaseSelects) > 0 || whereHasCase(q.Where)) {
 		return q, fmt.Errorf("provider does not support CASE expressions")
 	}
+	if !c.Coalesce && queryHasCoalesce(q) {
+		return q, fmt.Errorf("provider does not support COALESCE expressions")
+	}
 	if !c.JSONQueries && whereHasJSONPath(q.Where) {
 		return q, fmt.Errorf("provider does not support JSON path queries")
 	}
 	if len(q.CaseSelects) > 0 && len(q.Aggregates) > 0 {
 		return q, fmt.Errorf("CASE projections cannot be combined with aggregates in one query")
+	}
+	if len(q.CoalesceSelects) > 0 && len(q.Aggregates) > 0 {
+		return q, fmt.Errorf("COALESCE projections cannot be combined with aggregates in one query")
 	}
 	if (len(q.GroupBy) > 0 || len(q.Aggregates) > 0 || q.Having != nil) && !c.Aggregations {
 		return q, fmt.Errorf("provider does not support aggregations")
@@ -326,6 +333,36 @@ func queryHasVectorDistance(q query.Query) bool {
 	for _, s := range q.OrderBy {
 		if s.Distance != nil {
 			return true
+		}
+	}
+	return false
+}
+
+// queryHasCoalesce reports whether a COALESCE expression appears anywhere the
+// compiler would emit one: a projection, a WHERE predicate, or an ORDER BY term.
+func queryHasCoalesce(q query.Query) bool {
+	if len(q.CoalesceSelects) > 0 || whereHasCoalesce(q.Where) {
+		return true
+	}
+	for _, s := range q.OrderBy {
+		if s.Coalesce != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// whereHasCoalesce reports whether any predicate in a WHERE tree uses a COALESCE
+// expression on its left side, recursing through composites.
+func whereHasCoalesce(node query.Node) bool {
+	switch n := node.(type) {
+	case query.Predicate:
+		return n.Coalesce != nil
+	case query.Composite:
+		for _, child := range n.Children {
+			if whereHasCoalesce(child) {
+				return true
+			}
 		}
 	}
 	return false

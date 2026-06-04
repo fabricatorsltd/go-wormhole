@@ -26,25 +26,26 @@ const (
 // EntitySet provides a fluent API for querying and managing entities
 // of a single type through the DbContext.
 type EntitySet struct {
-	ctx           *DbContext
-	dest          any
-	meta          *model.EntityMeta
-	tableOverride string
-	preds         []query.Node
-	sorts         []query.Sort
-	lim           int
-	off           int
-	groupBy       []string
-	havingPreds   []query.Node
-	aggregates    []query.Aggregate
-	joins         []query.JoinSpec
-	includes      []string
-	ignoreFilters bool
-	tracking      trackMode
-	distinct      bool
-	selectCols    []string
-	setOps        []setOpSpec
-	caseSelects   []query.CaseSelect
+	ctx             *DbContext
+	dest            any
+	meta            *model.EntityMeta
+	tableOverride   string
+	preds           []query.Node
+	sorts           []query.Sort
+	lim             int
+	off             int
+	groupBy         []string
+	havingPreds     []query.Node
+	aggregates      []query.Aggregate
+	joins           []query.JoinSpec
+	includes        []string
+	ignoreFilters   bool
+	tracking        trackMode
+	distinct        bool
+	selectCols      []string
+	setOps          []setOpSpec
+	caseSelects     []query.CaseSelect
+	coalesceSelects []query.CoalesceSelect
 }
 
 // setOpSpec pairs a set operation with the EntitySet whose query is the operand.
@@ -360,6 +361,19 @@ func canonicalColumn(meta *model.EntityMeta, name string) string {
 // (typically a DTO field). Build the expression with dsl.Case(). Chainable.
 func (s *EntitySet) SelectCase(expr query.CaseExpr, alias string) *EntitySet {
 	s.caseSelects = append(s.caseSelects, query.CaseSelect{Expr: expr, Alias: alias})
+	return s
+}
+
+// SelectCoalesce projects a COALESCE expression into the result under an alias.
+func (s *EntitySet) SelectCoalesce(expr query.CoalesceExpr, alias string) *EntitySet {
+	s.coalesceSelects = append(s.coalesceSelects, query.CoalesceSelect{Expr: expr, Alias: alias})
+	return s
+}
+
+// OrderByCoalesce sorts by a COALESCE expression (e.g. a fallback value when the
+// primary column is NULL).
+func (s *EntitySet) OrderByCoalesce(expr query.CoalesceExpr, dir query.SortDir) *EntitySet {
+	s.sorts = append(s.sorts, query.Sort{Coalesce: &expr, Dir: dir})
 	return s
 }
 
@@ -690,6 +704,9 @@ func (s *EntitySet) buildQuery() query.Query {
 	for _, cs := range s.caseSelects {
 		b.SelectCase(cs.Expr, cs.Alias)
 	}
+	for _, cs := range s.coalesceSelects {
+		b.SelectCoalesce(cs.Expr, cs.Alias)
+	}
 	// Apply the discriminator predicate (single-table hierarchy), the caller's
 	// predicates, and any registered query filters, ANDed together. The
 	// discriminator is a correctness invariant, not a scoping convenience, so it
@@ -711,9 +728,14 @@ func (s *EntitySet) buildQuery() query.Query {
 		b.Filter(preds...)
 	}
 	for _, sort := range s.sorts {
-		if sort.Case != nil {
+		switch {
+		case sort.Case != nil:
 			b.OrderByCase(*sort.Case, sort.Dir)
-		} else {
+		case sort.Distance != nil:
+			b.OrderByDistance(*sort.Distance, sort.Dir)
+		case sort.Coalesce != nil:
+			b.OrderByCoalesce(*sort.Coalesce, sort.Dir)
+		default:
 			b.OrderBy(sort.Field, sort.Dir)
 		}
 	}

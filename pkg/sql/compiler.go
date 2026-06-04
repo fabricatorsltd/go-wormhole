@@ -158,6 +158,15 @@ func (c *Compiler) writeSelectBody(b *strings.Builder, params *[]any, meta *mode
 			b.WriteString(c.quote(cs.Alias))
 			wrote = true
 		}
+		for _, cs := range q.CoalesceSelects {
+			if wrote {
+				b.WriteString(", ")
+			}
+			c.compileCoalesceExpr(b, params, cs.Expr)
+			b.WriteString(" AS ")
+			b.WriteString(c.quote(cs.Alias))
+			wrote = true
+		}
 	}
 
 	// FROM — use the entity name carried in the query so that aggregate
@@ -217,6 +226,8 @@ func (c *Compiler) writeSelectTail(b *strings.Builder, params *[]any, meta *mode
 			c.writeVectorDistance(b, params, meta, *s.Distance)
 		} else if s.Case != nil {
 			c.compileCaseExpr(b, params, meta, *s.Case)
+		} else if s.Coalesce != nil {
+			c.compileCoalesceExpr(b, params, *s.Coalesce)
 		} else {
 			col := fieldColumn(meta, s.Field)
 			b.WriteString(c.quote(col))
@@ -897,6 +908,25 @@ func (c *Compiler) compileAggregate(meta *model.EntityMeta, agg query.Aggregate)
 // Predicates inside WHEN reuse compileNode so all predicate ops are supported.
 // Then/Else values are emitted as parameter placeholders so types preserve
 // across drivers.
+// compileCoalesceExpr renders COALESCE(arg, arg, ...). Column operands carry an
+// already-resolved storage column name (so this needs no meta and works in a
+// WHERE), literal operands are bound as parameters. Portable across dialects.
+func (c *Compiler) compileCoalesceExpr(b *strings.Builder, params *[]any, ce query.CoalesceExpr) {
+	b.WriteString("COALESCE(")
+	for i, arg := range ce.Args {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		if arg.Column != "" {
+			b.WriteString(c.quote(arg.Column))
+		} else {
+			b.WriteString(c.ph(len(*params) + 1))
+			*params = append(*params, arg.Value)
+		}
+	}
+	b.WriteString(")")
+}
+
 func (c *Compiler) compileCaseExpr(b *strings.Builder, params *[]any, meta *model.EntityMeta, ce query.CaseExpr) {
 	b.WriteString("CASE")
 	for _, branch := range ce.Branches {
@@ -1060,6 +1090,8 @@ func (c *Compiler) compilePredicate(b *strings.Builder, params *[]any, p query.P
 	switch {
 	case p.Case != nil:
 		c.compileCaseExpr(b, params, nil, *p.Case)
+	case p.Coalesce != nil:
+		c.compileCoalesceExpr(b, params, *p.Coalesce)
 	case p.JSONPath != "":
 		c.writeJSONExtract(b, p.Table, p.Field, p.JSONPath)
 	default:
