@@ -13,10 +13,12 @@ func Coalesce(args ...query.CoalesceArg) query.CoalesceExpr {
 	return query.CoalesceExpr{Args: args}
 }
 
-// Col makes a column operand for Coalesce from a field pointer, type-safely.
+// Col makes a column operand for Coalesce from a field pointer, type-safely. It
+// carries the operand's table so COALESCE qualifies the column in a joined
+// query, matching the table reference used in From/Join.
 func Col[B any, F any](base *B, fieldPtr *F) query.CoalesceArg {
-	fi := resolve(base, fieldPtr)
-	return query.CoalesceArg{Column: fi.Column}
+	fi, tm := resolveWithTypeMap(base, fieldPtr)
+	return query.CoalesceArg{Table: tm.table, Column: fi.Column}
 }
 
 // Lit makes a literal operand for Coalesce; the value is emitted as a bound

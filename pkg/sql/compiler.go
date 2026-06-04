@@ -918,7 +918,9 @@ func (c *Compiler) compileCoalesceExpr(b *strings.Builder, params *[]any, ce que
 			b.WriteString(", ")
 		}
 		if arg.Column != "" {
-			b.WriteString(c.quote(arg.Column))
+			// writeColumnRef qualifies with the table when present (joined
+			// queries) and renders bare otherwise, the same as any other column.
+			c.writeColumnRef(b, arg.Table, arg.Column)
 		} else {
 			b.WriteString(c.ph(len(*params) + 1))
 			*params = append(*params, arg.Value)

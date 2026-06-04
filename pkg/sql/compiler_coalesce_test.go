@@ -29,6 +29,30 @@ func TestCompileSelect_Coalesce_Projection(t *testing.T) {
 	}
 }
 
+// A table-qualified column operand renders "table"."column", so COALESCE works
+// in a join where the column name is ambiguous. Unqualified operands (empty
+// Table) stay bare.
+func TestCompileSelect_Coalesce_TableQualified(t *testing.T) {
+	meta := testMeta()
+	a := coalesce(query.CoalesceArg{Table: "device_inventory", Column: "status"}, query.CoalesceArg{Value: ""})
+	b := coalesce(query.CoalesceArg{Table: "device_slot", Column: "status"}, query.CoalesceArg{Value: ""})
+	q := query.From("device_inventory").
+		Select("id").
+		SelectCoalesce(a, "a_status").
+		SelectCoalesce(b, "b_status").
+		Build()
+
+	out := (&wsql.Compiler{Numbered: true}).Select(meta, q)
+	for _, want := range []string{
+		`COALESCE("device_inventory"."status", $1) AS "a_status"`,
+		`COALESCE("device_slot"."status", $2) AS "b_status"`,
+	} {
+		if !strings.Contains(out.SQL, want) {
+			t.Errorf("want SQL to contain %q, got %q", want, out.SQL)
+		}
+	}
+}
+
 // A COALESCE expression works on the left of a WHERE predicate.
 func TestCompileSelect_Coalesce_Where(t *testing.T) {
 	meta := testMeta()
