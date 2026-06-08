@@ -207,11 +207,13 @@ func columnChanged(old *ColumnDef, new *ColumnDef) bool {
 	return false
 }
 
-// indexDef is a resolved single-column index used for diffing.
+// indexDef is a resolved index used for diffing. Columns holds one entry for a
+// single-column index, or several (in field-declaration order) for a composite
+// index built from fields that share an explicit index name.
 type indexDef struct {
-	name   string
-	column string
-	unique bool
+	name    string
+	columns []string
+	unique  bool
 }
 
 // indexName derives a deterministic, table-qualified index name (engines like
@@ -228,6 +230,9 @@ func indexName(table, column, explicit string, unique bool) string {
 }
 
 // modelIndexes returns the indexes the model declares, keyed by index name.
+// Fields that share an explicit index name combine into one composite index,
+// with columns in field-declaration order; the index is unique if any of its
+// fields is marked unique.
 func modelIndexes(meta *model.EntityMeta) map[string]indexDef {
 	out := map[string]indexDef{}
 	for _, f := range meta.Fields {
@@ -235,12 +240,20 @@ func modelIndexes(meta *model.EntityMeta) map[string]indexDef {
 			continue
 		}
 		n := indexName(meta.Name, f.Column, f.Index, f.Unique)
-		out[n] = indexDef{name: n, column: f.Column, unique: f.Unique}
+		d := out[n]
+		d.name = n
+		d.columns = append(d.columns, f.Column)
+		if f.Unique {
+			d.unique = true
+		}
+		out[n] = d
 	}
 	return out
 }
 
 // snapshotIndexes returns the indexes a snapshot table records, keyed by name.
+// Composite members are grouped by index name; their order is the snapshot map's
+// (non-deterministic), so the diff compares column sets, not column order.
 func snapshotIndexes(table *TableSchema) map[string]indexDef {
 	out := map[string]indexDef{}
 	if table == nil {
@@ -251,9 +264,34 @@ func snapshotIndexes(table *TableSchema) map[string]indexDef {
 			continue
 		}
 		n := indexName(table.Name, c.Name, c.Index, c.Unique)
-		out[n] = indexDef{name: n, column: c.Name, unique: c.Unique}
+		d := out[n]
+		d.name = n
+		d.columns = append(d.columns, c.Name)
+		if c.Unique {
+			d.unique = true
+		}
+		out[n] = d
 	}
 	return out
+}
+
+// sameColumnSet reports whether two column lists hold the same set (order
+// insensitive), used because the snapshot does not preserve composite column
+// order.
+func sameColumnSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	as := append([]string(nil), a...)
+	bs := append([]string(nil), b...)
+	sort.Strings(as)
+	sort.Strings(bs)
+	for i := range as {
+		if as[i] != bs[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // diffIndexOps emits CreateIndex/DropIndex only for indexes that actually
@@ -265,11 +303,13 @@ func diffIndexOps(meta *model.EntityMeta, existing *TableSchema) []MigrationOp {
 
 	var creates, drops []string
 	for name, d := range desired {
-		if c, ok := current[name]; !ok || c.unique != d.unique {
+		c, ok := current[name]
+		changed := ok && (c.unique != d.unique || !sameColumnSet(c.columns, d.columns))
+		if !ok || changed {
 			creates = append(creates, name)
-			if ok && c.unique != d.unique {
-				drops = append(drops, name) // recreate with new uniqueness
-			}
+		}
+		if changed {
+			drops = append(drops, name) // recreate with new uniqueness or columns
 		}
 	}
 	for name := range current {
@@ -289,7 +329,7 @@ func diffIndexOps(meta *model.EntityMeta, existing *TableSchema) []MigrationOp {
 		ops = append(ops, CreateIndexOp{
 			Name:    name,
 			Table:   meta.Name,
-			Columns: []string{d.column},
+			Columns: d.columns,
 			Unique:  d.unique,
 		})
 	}
