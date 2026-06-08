@@ -282,10 +282,10 @@ func parseFieldFromTag(fieldName, tag string) *model.FieldMeta {
 		} else if opt == "index" {
 			field.Indexed = true
 		} else if strings.HasPrefix(opt, "index:") {
-			field.Index = strings.TrimPrefix(opt, "index:")
+			field.Index, field.IndexOrder = model.ParseIndexSpec(strings.TrimPrefix(opt, "index:"))
 			field.Indexed = true
 		} else if strings.HasPrefix(opt, "unique_index:") {
-			field.Index = strings.TrimPrefix(opt, "unique_index:")
+			field.Index, field.IndexOrder = model.ParseIndexSpec(strings.TrimPrefix(opt, "unique_index:"))
 			field.Indexed = true
 			field.Unique = true
 		}

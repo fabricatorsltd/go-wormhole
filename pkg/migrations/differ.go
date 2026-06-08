@@ -24,6 +24,48 @@ func ValidateModels(targets []*model.EntityMeta) error {
 				return fmt.Errorf("entity %q column %q is computed; generated-column DDL is not yet supported, define the column manually", m.Name, f.Column)
 			}
 		}
+		if err := validateIndexPositions(m); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateIndexPositions rejects a named index whose member fields mix explicit
+// positions with implicit ones, or repeat a position. Order must be all-or-none
+// and unique so a composite's column order is never ambiguous. Gaps (1, 3) are
+// allowed; the columns sort by value.
+func validateIndexPositions(m *model.EntityMeta) error {
+	positions := map[string][]int{}
+	for _, f := range m.Fields {
+		if f.Index == "" {
+			continue // only explicitly-named indexes can be composite
+		}
+		positions[f.Index] = append(positions[f.Index], f.IndexOrder)
+	}
+	for name, ps := range positions {
+		if len(ps) < 2 {
+			continue // single-column index: position is irrelevant
+		}
+		zero, nonzero := 0, 0
+		seen := map[int]bool{}
+		for _, p := range ps {
+			if p == 0 {
+				zero++
+				continue
+			}
+			if p < 1 {
+				return fmt.Errorf("entity %q index %q has invalid column position %d; positions are 1-based", m.Name, name, p)
+			}
+			nonzero++
+			if seen[p] {
+				return fmt.Errorf("entity %q index %q repeats column position %d", m.Name, name, p)
+			}
+			seen[p] = true
+		}
+		if zero > 0 && nonzero > 0 {
+			return fmt.Errorf("entity %q index %q mixes explicit and implicit column order; give all of its fields a position or none", m.Name, name)
+		}
 	}
 	return nil
 }
@@ -208,12 +250,43 @@ func columnChanged(old *ColumnDef, new *ColumnDef) bool {
 }
 
 // indexDef is a resolved index used for diffing. Columns holds one entry for a
-// single-column index, or several (in field-declaration order) for a composite
-// index built from fields that share an explicit index name.
+// single-column index, or several for a composite index built from fields that
+// share an explicit index name. ordered is true when every member carries an
+// explicit position (index:name:N): the columns are then sorted by it and the
+// diff compares column order, not just the column set.
 type indexDef struct {
 	name    string
 	columns []string
 	unique  bool
+	ordered bool
+}
+
+// indexMember is one column's contribution to an index during grouping.
+type indexMember struct {
+	column string
+	order  int
+}
+
+// resolveIndex turns grouped member columns into an indexDef. When every member
+// has an explicit position the columns are sorted by it and the index is marked
+// ordered; otherwise they keep accumulation order (declaration for the model, map
+// order for a snapshot) and the index is unordered.
+func resolveIndex(name string, members []indexMember, unique bool) indexDef {
+	ordered := len(members) > 0
+	for _, m := range members {
+		if m.order == 0 {
+			ordered = false
+			break
+		}
+	}
+	if ordered {
+		sort.SliceStable(members, func(i, j int) bool { return members[i].order < members[j].order })
+	}
+	cols := make([]string, len(members))
+	for i, m := range members {
+		cols[i] = m.column
+	}
+	return indexDef{name: name, columns: cols, unique: unique, ordered: ordered}
 }
 
 // indexName derives a deterministic, table-qualified index name (engines like
@@ -234,19 +307,21 @@ func indexName(table, column, explicit string, unique bool) string {
 // with columns in field-declaration order; the index is unique if any of its
 // fields is marked unique.
 func modelIndexes(meta *model.EntityMeta) map[string]indexDef {
-	out := map[string]indexDef{}
+	groups := map[string][]indexMember{}
+	unique := map[string]bool{}
 	for _, f := range meta.Fields {
 		if f.Index == "" && !f.Indexed && !f.Unique {
 			continue
 		}
 		n := indexName(meta.Name, f.Column, f.Index, f.Unique)
-		d := out[n]
-		d.name = n
-		d.columns = append(d.columns, f.Column)
+		groups[n] = append(groups[n], indexMember{column: f.Column, order: f.IndexOrder})
 		if f.Unique {
-			d.unique = true
+			unique[n] = true
 		}
-		out[n] = d
+	}
+	out := make(map[string]indexDef, len(groups))
+	for n, ms := range groups {
+		out[n] = resolveIndex(n, ms, unique[n])
 	}
 	return out
 }
@@ -255,24 +330,47 @@ func modelIndexes(meta *model.EntityMeta) map[string]indexDef {
 // Composite members are grouped by index name; their order is the snapshot map's
 // (non-deterministic), so the diff compares column sets, not column order.
 func snapshotIndexes(table *TableSchema) map[string]indexDef {
-	out := map[string]indexDef{}
 	if table == nil {
-		return out
+		return map[string]indexDef{}
 	}
+	groups := map[string][]indexMember{}
+	unique := map[string]bool{}
 	for _, c := range table.Columns {
 		if c.Index == "" && !c.Indexed && !c.Unique {
 			continue
 		}
 		n := indexName(table.Name, c.Name, c.Index, c.Unique)
-		d := out[n]
-		d.name = n
-		d.columns = append(d.columns, c.Name)
+		groups[n] = append(groups[n], indexMember{column: c.Name, order: c.IndexOrder})
 		if c.Unique {
-			d.unique = true
+			unique[n] = true
 		}
-		out[n] = d
+	}
+	out := make(map[string]indexDef, len(groups))
+	for n, ms := range groups {
+		out[n] = resolveIndex(n, ms, unique[n])
 	}
 	return out
+}
+
+// sameColumns compares a desired index against the current (snapshot) one. It
+// compares column order exactly only when BOTH sides record an explicit order;
+// otherwise it falls back to a set comparison. This keeps unpositioned composites
+// order-insensitive (the v1.11.0 contract) and avoids a spurious rebuild the
+// first time a positioned model is diffed against a snapshot written before
+// positions existed (current side unordered -> set comparison).
+func sameColumns(desired, current indexDef) bool {
+	if desired.ordered && current.ordered {
+		if len(desired.columns) != len(current.columns) {
+			return false
+		}
+		for i := range desired.columns {
+			if desired.columns[i] != current.columns[i] {
+				return false
+			}
+		}
+		return true
+	}
+	return sameColumnSet(desired.columns, current.columns)
 }
 
 // sameColumnSet reports whether two column lists hold the same set (order
@@ -304,7 +402,7 @@ func diffIndexOps(meta *model.EntityMeta, existing *TableSchema) []MigrationOp {
 	var creates, drops []string
 	for name, d := range desired {
 		c, ok := current[name]
-		changed := ok && (c.unique != d.unique || !sameColumnSet(c.columns, d.columns))
+		changed := ok && (c.unique != d.unique || !sameColumns(d, c))
 		if !ok || changed {
 			creates = append(creates, name)
 		}
@@ -353,6 +451,7 @@ func fieldToColumnDef(f model.FieldMeta) ColumnDef {
 		Nullable:   f.Nullable,
 		Default:    def,
 		Index:      f.Index,
+		IndexOrder: f.IndexOrder,
 		Indexed:    f.Indexed,
 		Unique:     f.Unique,
 		GoType:     f.GoType,

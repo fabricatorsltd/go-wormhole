@@ -108,6 +108,7 @@ func ParseType(t reflect.Type) *model.EntityMeta {
 			discValue = d
 		}
 
+		idxName, idxOrder := model.ParseIndexSpec(firstNonEmpty(fm.Get("index"), fm.Get("unique_index")))
 		field := model.FieldMeta{
 			FieldName:  fm.Name,
 			Column:     col,
@@ -116,7 +117,8 @@ func ParseType(t reflect.Type) *model.EntityMeta {
 			PrimaryKey: fm.Has("primary_key"),
 			AutoIncr:   fm.Has("auto_increment"),
 			Nullable:   fm.Has("nullable"),
-			Index:      firstNonEmpty(fm.Get("index"), fm.Get("unique_index")),
+			Index:      idxName,
+			IndexOrder: idxOrder,
 			Indexed:    fm.Has("index") || fm.Has("unique") || fm.Has("unique_index"),
 			Unique:     fm.Has("unique") || fm.Has("unique_index"),
 			Computed:   fm.Has("computed"),

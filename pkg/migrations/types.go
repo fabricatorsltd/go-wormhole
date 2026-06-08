@@ -7,8 +7,8 @@ import "reflect"
 // definition, which every supported dialect accepts (including SQLite, where
 // table-level ALTER ADD CONSTRAINT is unavailable).
 type ColumnRef struct {
-	Table    string `json:"table"`              // referenced table
-	Column   string `json:"column"`             // referenced column
+	Table    string `json:"table"`               // referenced table
+	Column   string `json:"column"`              // referenced column
 	OnDelete string `json:"on_delete,omitempty"` // optional action: CASCADE, SET NULL, RESTRICT, ...
 }
 
@@ -23,6 +23,7 @@ type ColumnDef struct {
 	Nullable   bool         `json:"nullable,omitempty"`
 	Default    string       `json:"default,omitempty"`     // literal default expression
 	Index      string       `json:"index,omitempty"`       // explicit secondary index name
+	IndexOrder int          `json:"index_order,omitempty"` // 1-based position in a composite index; 0 = unspecified
 	Indexed    bool         `json:"indexed,omitempty"`     // a secondary index is requested
 	Unique     bool         `json:"unique,omitempty"`      // the index is unique
 	Ref        *ColumnRef   `json:"ref,omitempty"`         // foreign-key reference
