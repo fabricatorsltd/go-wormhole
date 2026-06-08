@@ -37,11 +37,19 @@ func ValidateModels(targets []*model.EntityMeta) error {
 // allowed; the columns sort by value.
 func validateIndexPositions(m *model.EntityMeta) error {
 	positions := map[string][]int{}
+	cols := map[string]map[string]bool{}
 	for _, f := range m.Fields {
-		if f.Index == "" {
-			continue // only explicitly-named indexes can be composite
+		for _, ref := range effectiveRefs(f.Indexes, f.Index, f.IndexOrder, f.Indexed, f.Unique) {
+			n := indexName(m.Name, f.Column, ref.Name, ref.Unique)
+			positions[n] = append(positions[n], ref.Order)
+			if cols[n] == nil {
+				cols[n] = map[string]bool{}
+			}
+			if cols[n][f.Column] {
+				return fmt.Errorf("entity %q index %q lists column %q more than once", m.Name, n, f.Column)
+			}
+			cols[n][f.Column] = true
 		}
-		positions[f.Index] = append(positions[f.Index], f.IndexOrder)
 	}
 	for name, ps := range positions {
 		if len(ps) < 2 {
@@ -310,13 +318,12 @@ func modelIndexes(meta *model.EntityMeta) map[string]indexDef {
 	groups := map[string][]indexMember{}
 	unique := map[string]bool{}
 	for _, f := range meta.Fields {
-		if f.Index == "" && !f.Indexed && !f.Unique {
-			continue
-		}
-		n := indexName(meta.Name, f.Column, f.Index, f.Unique)
-		groups[n] = append(groups[n], indexMember{column: f.Column, order: f.IndexOrder})
-		if f.Unique {
-			unique[n] = true
+		for _, ref := range effectiveRefs(f.Indexes, f.Index, f.IndexOrder, f.Indexed, f.Unique) {
+			n := indexName(meta.Name, f.Column, ref.Name, ref.Unique)
+			groups[n] = append(groups[n], indexMember{column: f.Column, order: ref.Order})
+			if ref.Unique {
+				unique[n] = true
+			}
 		}
 	}
 	out := make(map[string]indexDef, len(groups))
@@ -324,6 +331,19 @@ func modelIndexes(meta *model.EntityMeta) map[string]indexDef {
 		out[n] = resolveIndex(n, ms, unique[n])
 	}
 	return out
+}
+
+// effectiveRefs returns the index memberships of a field or column, falling back
+// to the legacy single-index fields when the Indexes list is empty. Old snapshots
+// and hand-built metadata predate the list, so the differ must still read them.
+func effectiveRefs(refs []model.IndexRef, name string, order int, indexed, unique bool) []model.IndexRef {
+	if len(refs) > 0 {
+		return refs
+	}
+	if name == "" && !indexed && !unique {
+		return nil
+	}
+	return []model.IndexRef{{Name: name, Order: order, Unique: unique}}
 }
 
 // snapshotIndexes returns the indexes a snapshot table records, keyed by name.
@@ -336,13 +356,12 @@ func snapshotIndexes(table *TableSchema) map[string]indexDef {
 	groups := map[string][]indexMember{}
 	unique := map[string]bool{}
 	for _, c := range table.Columns {
-		if c.Index == "" && !c.Indexed && !c.Unique {
-			continue
-		}
-		n := indexName(table.Name, c.Name, c.Index, c.Unique)
-		groups[n] = append(groups[n], indexMember{column: c.Name, order: c.IndexOrder})
-		if c.Unique {
-			unique[n] = true
+		for _, ref := range effectiveRefs(c.Indexes, c.Index, c.IndexOrder, c.Indexed, c.Unique) {
+			n := indexName(table.Name, c.Name, ref.Name, ref.Unique)
+			groups[n] = append(groups[n], indexMember{column: c.Name, order: ref.Order})
+			if ref.Unique {
+				unique[n] = true
+			}
 		}
 	}
 	out := make(map[string]indexDef, len(groups))
@@ -452,6 +471,7 @@ func fieldToColumnDef(f model.FieldMeta) ColumnDef {
 		Default:    def,
 		Index:      f.Index,
 		IndexOrder: f.IndexOrder,
+		Indexes:    f.Indexes,
 		Indexed:    f.Indexed,
 		Unique:     f.Unique,
 		GoType:     f.GoType,

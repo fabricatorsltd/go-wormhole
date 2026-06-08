@@ -119,6 +119,7 @@ func ParseType(t reflect.Type) *model.EntityMeta {
 			Nullable:   fm.Has("nullable"),
 			Index:      idxName,
 			IndexOrder: idxOrder,
+			Indexes:    indexRefs(fm),
 			Indexed:    fm.Has("index") || fm.Has("unique") || fm.Has("unique_index"),
 			Unique:     fm.Has("unique") || fm.Has("unique_index"),
 			Computed:   fm.Has("computed"),
@@ -295,6 +296,34 @@ func normalizeOnDelete(v string) string {
 	default:
 		return ""
 	}
+}
+
+// indexRefs collects every secondary index a field belongs to. `index:` and
+// `unique_index:` accept several comma-separated names (each with an optional
+// :N position), so one field can join its own single-column index and a
+// composite at once. Bare `unique`/`index` map to an auto-named single index.
+func indexRefs(fm tags.FieldMeta) []model.IndexRef {
+	var refs []model.IndexRef
+	if fm.Has("unique") {
+		refs = append(refs, model.IndexRef{Unique: true})
+	}
+	add := func(key string, unique bool) {
+		if !fm.Has(key) {
+			return
+		}
+		vals := fm.GetAll(key)
+		if len(vals) == 0 {
+			refs = append(refs, model.IndexRef{Unique: unique})
+			return
+		}
+		for _, v := range vals {
+			name, order := model.ParseIndexSpec(v)
+			refs = append(refs, model.IndexRef{Name: name, Order: order, Unique: unique})
+		}
+	}
+	add("index", false)
+	add("unique_index", true)
+	return refs
 }
 
 // firstNonEmpty returns the first non-empty string among its arguments.

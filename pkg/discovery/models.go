@@ -279,19 +279,34 @@ func parseFieldFromTag(fieldName, tag string) *model.FieldMeta {
 		} else if opt == "unique" || opt == "unique_index" {
 			field.Indexed = true
 			field.Unique = true
+			field.Indexes = append(field.Indexes, model.IndexRef{Unique: true})
 		} else if opt == "index" {
 			field.Indexed = true
+			field.Indexes = append(field.Indexes, model.IndexRef{})
 		} else if strings.HasPrefix(opt, "index:") {
-			field.Index, field.IndexOrder = model.ParseIndexSpec(strings.TrimPrefix(opt, "index:"))
 			field.Indexed = true
+			addIndexRefs(field, strings.TrimPrefix(opt, "index:"), false)
 		} else if strings.HasPrefix(opt, "unique_index:") {
-			field.Index, field.IndexOrder = model.ParseIndexSpec(strings.TrimPrefix(opt, "unique_index:"))
 			field.Indexed = true
 			field.Unique = true
+			addIndexRefs(field, strings.TrimPrefix(opt, "unique_index:"), true)
 		}
 	}
 
 	return field
+}
+
+// addIndexRefs appends one membership per comma-separated index name (each with
+// an optional :N position) and keeps the primary single-index fields pointed at
+// the first one, for back-compat with readers that predate FieldMeta.Indexes.
+func addIndexRefs(field *model.FieldMeta, spec string, unique bool) {
+	for _, v := range strings.Split(spec, ",") {
+		name, order := model.ParseIndexSpec(v)
+		field.Indexes = append(field.Indexes, model.IndexRef{Name: name, Order: order, Unique: unique})
+		if field.Index == "" {
+			field.Index, field.IndexOrder = name, order
+		}
+	}
 }
 
 // DiscoverModelsFromReflection tries to discover models that are already parsed/registered

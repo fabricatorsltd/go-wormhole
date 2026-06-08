@@ -1,6 +1,10 @@
 package migrations
 
-import "reflect"
+import (
+	"reflect"
+
+	"github.com/fabricatorsltd/go-wormhole/pkg/model"
+)
 
 // ColumnRef is a column-level foreign-key reference. It renders as
 // REFERENCES "table" ("column") [ON DELETE <action>] inline in the column
@@ -16,18 +20,19 @@ type ColumnRef struct {
 // tags let it be serialized into the model snapshot file; GoType is omitted
 // because the snapshot resolves a concrete SQLType before writing.
 type ColumnDef struct {
-	Name       string       `json:"name"`
-	SQLType    string       `json:"sql_type,omitempty"`
-	PrimaryKey bool         `json:"primary_key,omitempty"`
-	AutoIncr   bool         `json:"auto_incr,omitempty"`
-	Nullable   bool         `json:"nullable,omitempty"`
-	Default    string       `json:"default,omitempty"`     // literal default expression
-	Index      string       `json:"index,omitempty"`       // explicit secondary index name
-	IndexOrder int          `json:"index_order,omitempty"` // 1-based position in a composite index; 0 = unspecified
-	Indexed    bool         `json:"indexed,omitempty"`     // a secondary index is requested
-	Unique     bool         `json:"unique,omitempty"`      // the index is unique
-	Ref        *ColumnRef   `json:"ref,omitempty"`         // foreign-key reference
-	GoType     reflect.Type `json:"-"`
+	Name       string           `json:"name"`
+	SQLType    string           `json:"sql_type,omitempty"`
+	PrimaryKey bool             `json:"primary_key,omitempty"`
+	AutoIncr   bool             `json:"auto_incr,omitempty"`
+	Nullable   bool             `json:"nullable,omitempty"`
+	Default    string           `json:"default,omitempty"`     // literal default expression
+	Index      string           `json:"index,omitempty"`       // primary index name (first membership), kept for back-compat
+	IndexOrder int              `json:"index_order,omitempty"` // 1-based position of the primary membership; 0 = unspecified
+	Indexes    []model.IndexRef `json:"indexes,omitempty"`     // every secondary index this column belongs to
+	Indexed    bool             `json:"indexed,omitempty"`     // a secondary index is requested
+	Unique     bool             `json:"unique,omitempty"`      // any of the column's indexes is unique
+	Ref        *ColumnRef       `json:"ref,omitempty"`         // foreign-key reference
+	GoType     reflect.Type     `json:"-"`
 }
 
 // --- Migration operations ---
