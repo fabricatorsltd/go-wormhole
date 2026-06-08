@@ -185,13 +185,20 @@ func parseFieldFromTagWithType(fieldName, tag, goType string, isPointer bool) *m
 		field.Nullable = true
 	}
 
-	// Set appropriate SQL type based on Go type if not explicitly set
+	// Set the default SQL type from the Go type when not explicitly tagged. The
+	// AST path sees the type as a string, so this mirrors GoTypeToSQL (the
+	// reflection path) by hand: 64-bit integers map to BIGINT and float64 to
+	// DOUBLE PRECISION, so both generators emit the same DDL for a wide type.
 	if _, hasType := field.Tags["type"]; !hasType {
 		switch goType {
-		case "int", "int8", "int16", "int32", "int64",
-			"uint", "uint8", "uint16", "uint32", "uint64":
+		case "int64", "uint64":
+			field.Tags["type"] = "BIGINT"
+		case "int", "int8", "int16", "int32",
+			"uint", "uint8", "uint16", "uint32":
 			field.Tags["type"] = "INTEGER"
-		case "float32", "float64":
+		case "float64":
+			field.Tags["type"] = "DOUBLE PRECISION"
+		case "float32":
 			field.Tags["type"] = "REAL"
 		case "bool":
 			field.Tags["type"] = "BOOLEAN"

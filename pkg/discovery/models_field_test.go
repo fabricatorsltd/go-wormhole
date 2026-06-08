@@ -51,7 +51,7 @@ func TestDiscovery_FieldTypesAndNullability(t *testing.T) {
 		sqlType  string
 		nullable bool
 	}{
-		{"CreatedAt", "TIMESTAMP", false}, // time.Time, not TEXT
+		{"CreatedAt", "TIMESTAMP", false},  // time.Time, not TEXT
 		{"LastLoginAt", "TIMESTAMP", true}, // *time.Time: timestamp AND nullable
 		{"Email", "TEXT", false},
 		{"ID", "TEXT", false},
@@ -67,6 +67,57 @@ func TestDiscovery_FieldTypesAndNullability(t *testing.T) {
 		}
 		if f.Nullable != c.nullable {
 			t.Errorf("%s nullable: got %v, want %v", c.field, f.Nullable, c.nullable)
+		}
+	}
+}
+
+// 64-bit Go types must map to wide SQL types in the AST generator, matching the
+// reflection path (GoTypeToSQL). int64 -> BIGINT (the reported gap), float64 ->
+// DOUBLE PRECISION; narrow widths stay INTEGER/REAL.
+func TestDiscovery_WideNumericTypes(t *testing.T) {
+	dir := t.TempDir()
+	src := `package main
+
+type Ledger struct {
+	ID     int64   ` + "`db:\"column:id;primary_key\"`" + `
+	Seq    int     ` + "`db:\"column:seq\"`" + `
+	Big    uint64  ` + "`db:\"column:big\"`" + `
+	Amount float64 ` + "`db:\"column:amount\"`" + `
+	Ratio  float32 ` + "`db:\"column:ratio\"`" + `
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "ledger.go"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	models, err := DiscoverModels(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m *model.EntityMeta
+	for _, x := range models {
+		if x.Name == "ledger" {
+			m = x
+		}
+	}
+	if m == nil {
+		t.Fatal("ledger model not discovered")
+	}
+
+	want := map[string]string{
+		"ID":     "BIGINT",
+		"Seq":    "INTEGER",
+		"Big":    "BIGINT",
+		"Amount": "DOUBLE PRECISION",
+		"Ratio":  "REAL",
+	}
+	for field, sqlType := range want {
+		f := m.Field(field)
+		if f == nil {
+			t.Errorf("%s: not discovered", field)
+			continue
+		}
+		if got := f.Tags["type"]; got != sqlType {
+			t.Errorf("%s type: got %q, want %q", field, got, sqlType)
 		}
 	}
 }
