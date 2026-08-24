@@ -1,0 +1,177 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GO_VERSION: "1.25.13"
+  FOUNDATION_VERSION: "v2.4.0"
+  GOVULNCHECK_VERSION: "v1.6.0"
+  GOLANGCI_LINT_VERSION: "v2.12.2"
+  EUPROVGUARD_VERSION: "v1.2.1"
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.sum
+
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+        run: go build ./...
+
+  test:
+    name: Test
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.sum
+
+      - name: Install Foundation CLI
+        run: go install github.com/mirkobrombin/go-foundation/dev/v2/cmd/foundation@${{ env.FOUNDATION_VERSION }}
+
+      - name: Run tests three times
+        shell: bash
+        run: |
+          set -euo pipefail
+          for _ in 1 2 3; do
+            go test -count=1 -shuffle=on -timeout=10m ./...
+          done
+
+      - name: Run tests with race detector
+        run: go test -race -count=1 -timeout=15m ./...
+
+      - name: Run vet
+        run: go vet ./...
+
+      - name: Check Foundation declarations
+        run: foundation check ./...
+
+      - name: Check generated registries
+        run: foundation generate -check ./...
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          args: --new-from-rev=origin/main
+        env:
+          CGO_ENABLED: "0"
+
+      - name: Scan vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULNCHECK_VERSION }} ./...
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Scan repository
+        uses: trufflesecurity/trufflehog@bcfcf73aaf4759d4dadc2783177c245a02792318 # v3.97.0
+        with:
+          extra_args: --results=verified,unknown
+
+  compliance:
+    name: Compliance
+    needs: [test, secret-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Install EUProvGuard
+        run: go install github.com/fabricatorsltd/euprovguard@${{ env.EUPROVGUARD_VERSION }}
+
+      - name: Resolve project version
+        id: version
+        shell: bash
+        run: echo "value=0.0.0-${GITHUB_SHA:0:7}" >> "${GITHUB_OUTPUT}"
+
+      - name: Scan module
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p compliance
+          euprovguard \
+            -path . \
+            -name go-wormhole \
+            -version-tag "${{ steps.version.outputs.value }}" \
+            -output compliance/sbom.json \
+            -bundle compliance/report 2>&1 | tee compliance/scan.log
+
+      - name: Fail on compliance findings
+        shell: bash
+        run: |
+          set -euo pipefail
+          sbom="compliance/sbom.json"
+          log="compliance/scan.log"
+
+          recorded=$(jq '(.vulnerabilities // []) | length' "${sbom}")
+          cves=$(sed -n 's/.*CVE findings: \([0-9][0-9]*\).*/\1/p' "${log}" | tail -n 1)
+          sast=$(sed -n 's/.*Native SAST completed: found \([0-9][0-9]*\) issues.*/\1/p' "${log}" | tail -n 1)
+
+          echo "module: sbom=${recorded} cve=${cves:-missing} sast=${sast:-missing}"
+
+          if [ -z "${cves}" ] || [ -z "${sast}" ]; then
+            echo "::error::EUProvGuard summary could not be parsed"
+            exit 1
+          fi
+          if grep -q "OSV/EUVD query failed" "${log}"; then
+            echo "::error::vulnerability databases were unreachable"
+            exit 1
+          fi
+          if [ "${recorded}" -gt 0 ] || [ "${cves}" -gt 0 ] || [ "${sast}" -gt 0 ]; then
+            echo "::error::EUProvGuard reported findings"
+            exit 1
+          fi
+
+      - name: Upload compliance artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: compliance-reports
+          path: compliance/
+          if-no-files-found: error

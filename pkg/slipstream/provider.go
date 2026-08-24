@@ -9,9 +9,9 @@ import (
 	"github.com/fabricatorsltd/go-wormhole/pkg/model"
 	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
 	"github.com/fabricatorsltd/go-wormhole/pkg/query"
-	"github.com/mirkobrombin/go-slipstream/pkg/engine"
-	"github.com/mirkobrombin/go-slipstream/pkg/tx"
-	"github.com/mirkobrombin/go-slipstream/pkg/wal"
+	"github.com/mirkobrombin/go-slipstream/v2/pkg/engine"
+	"github.com/mirkobrombin/go-slipstream/v2/pkg/tx"
+	"github.com/mirkobrombin/go-slipstream/v2/pkg/wal"
 )
 
 // record is the storage unit: a map of column→value pairs.

@@ -16,7 +16,7 @@ import (
 	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
 	wsql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
 
-	"github.com/mirkobrombin/go-foundation/pkg/resiliency"
+	"github.com/mirkobrombin/go-foundation/v2/core/resiliency"
 )
 
 type User struct {

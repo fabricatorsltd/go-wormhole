@@ -7,7 +7,7 @@ import (
 	"unsafe"
 
 	"github.com/fabricatorsltd/go-wormhole/pkg/util"
-	"github.com/mirkobrombin/go-foundation/pkg/tags"
+	"github.com/mirkobrombin/go-foundation/v2/core/tags"
 )
 
 // fieldInfo maps a memory offset to the field's identity.

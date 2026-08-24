@@ -8,7 +8,7 @@ Install `go-wormhole` and write your first query in 3 steps.
 go get github.com/fabricatorsltd/go-wormhole@latest
 ```
 
-## Step 1 — Define Your Entity
+## Step 1 - Define Your Entity
 
 Your Go struct **is** your database schema. Use `db:"..."` tags to control
 the mapping:
@@ -37,7 +37,7 @@ No tag? The framework defaults to snake_case (`Age` → `age`, `UserID` → `use
 | `default`         | `default:'active'`       | SQL DEFAULT expression          |
 
 
-## Step 2 — Bootstrap the Framework
+## Step 2 - Bootstrap the Framework
 
 At the boot of your application, register your entities with the DSL
 and wire up a provider:
@@ -74,7 +74,7 @@ func main() {
 > This powers the zero-allocation, type-safe query DSL at runtime.
 
 
-## Step 3 — Query and Mutate
+## Step 3 - Query and Mutate
 
 ```go
 import (
@@ -92,7 +92,7 @@ func handler() {
     var u User
     ctx.Set(&u).Find(42)
 
-    // Mutate in memory — no ORM method needed
+    // Mutate in memory - no ORM method needed
     u.Age = 35
 
     // Flush: Wormhole detects the change and emits

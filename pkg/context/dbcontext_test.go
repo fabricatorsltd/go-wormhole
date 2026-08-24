@@ -13,7 +13,7 @@ import (
 	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
 	"github.com/fabricatorsltd/go-wormhole/pkg/query"
 
-	"github.com/mirkobrombin/go-foundation/pkg/resiliency"
+	"github.com/mirkobrombin/go-foundation/v2/core/resiliency"
 )
 
 // --- mock provider ---

@@ -5,10 +5,10 @@ interface. Each backend translates the neutral AST into native operations.
 
 Currently four providers are built-in:
 
-- **SQL Provider** — any `database/sql`-compatible driver (PostgreSQL, SQLite, MySQL)
-- **Mongo Provider** — document NoSQL provider based on MongoDB
-- **Slipstream Provider** — embedded NoSQL using `go-slipstream` (Bitcask engine)
-- **MemDoc Provider** — deterministic in-memory document provider (tests/local)
+- **SQL Provider** - any `database/sql`-compatible driver (PostgreSQL, SQLite, MySQL)
+- **Mongo Provider** - document NoSQL provider based on MongoDB
+- **Slipstream Provider** - embedded NoSQL using `go-slipstream/v2` (Bitcask engine)
+- **MemDoc Provider** - deterministic in-memory document provider (tests/local)
 
 ## Capability Matrix
 
@@ -54,7 +54,7 @@ plus `Commit()` and `Rollback()`.
 
 ## Provider Registry
 
-Providers are registered at startup using the `go-foundation/pkg/adapters`
+Providers are registered at startup using the `go-foundation/v2/core/adapters`
 registry:
 
 ```go
@@ -200,7 +200,7 @@ provider.SetDefault("mongo")
 
 ## Slipstream Provider (NoSQL)
 
-The Slipstream provider uses `go-slipstream` — a high-performance,
+The Slipstream provider uses `go-slipstream/v2`, a high-performance,
 embedded Bitcask key-value engine.
 
 ### Setup

@@ -1,7 +1,7 @@
 # Resilience
 
 Databases fail. Connections drop. Deadlocks happen. `go-wormhole` integrates
-natively with `go-foundation/pkg/resiliency` to handle these scenarios
+natively with `go-foundation/v2/core/resiliency` to handle these scenarios
 gracefully instead of crashing.
 
 
@@ -13,7 +13,7 @@ transient errors (e.g. `driver: bad connection`, network timeouts):
 ```go
 import (
     "time"
-    "github.com/mirkobrombin/go-foundation/pkg/resiliency"
+    "github.com/mirkobrombin/go-foundation/v2/core/resiliency"
     wormholesql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
 )
 
@@ -33,7 +33,7 @@ level. If a call fails, it retries up to 3 times with exponential backoff
 ## Read Retry (DbContext Level)
 
 For read operations (`Find`, `Execute`), the `DbContext` provides its own
-retry layer — independent from the provider's retry:
+retry layer - independent from the provider's retry:
 
 ```go
 import wh "github.com/fabricatorsltd/go-wormhole/pkg/context"
@@ -174,14 +174,14 @@ giving up. Each with exponential backoff, so the total timeout grows
 gracefully.
 
 
-## go-foundation Integration
+## go-foundation/v2 Integration
 
-All resilience primitives come from `go-foundation`:
+All resilience primitives come from `go-foundation/v2`:
 
 | Primitive          | Package                              |
 |--------------------|--------------------------------------|
-| `Retry()`          | `github.com/mirkobrombin/go-foundation/pkg/resiliency` |
-| `CircuitBreaker`   | `github.com/mirkobrombin/go-foundation/pkg/resiliency` |
-| `MultiError`       | `github.com/mirkobrombin/go-foundation/pkg/errors`     |
+| `Retry()`          | `github.com/mirkobrombin/go-foundation/v2/core/resiliency` |
+| `CircuitBreaker`   | `github.com/mirkobrombin/go-foundation/v2/core/resiliency` |
+| `MultiError`       | `github.com/mirkobrombin/go-foundation/v2/core/errutil`    |
 
 No external dependencies. No third-party retry libraries. Pure Go.

@@ -54,22 +54,22 @@ go-wormhole/
 ```
 
 
-## go-foundation Integration Map
+## go-foundation/v2 Integration Map
 
-`go-wormhole` builds on `go-foundation` primitives. Here's exactly where
+`go-wormhole` builds on `go-foundation/v2` primitives. Here's exactly where
 each is used:
 
-| go-foundation Package    | Used In                    | Purpose                                |
+| go-foundation/v2 Package | Used In                    | Purpose                                |
 |--------------------------|----------------------------|----------------------------------------|
-| `pkg/adapters.Registry`  | `provider/registry.go`     | Multi-backend provider registry        |
-| `pkg/di.Container`       | `context/di.go`            | Dependency injection for DbContext     |
-| `pkg/tags.Parser`        | `schema/parser.go`, `dsl/` | Parse `db:"..."` struct tags           |
-| `pkg/safemap.ShardedMap` | `tracker/tracker.go`       | Identity Map (32 concurrent shards)    |
-| `pkg/hooks.Discovery`    | `context/dbcontext.go`     | Auto-discover `BeforeSave()` etc.      |
-| `pkg/hooks.Runner`       | `context/dbcontext.go`     | Execute pre/post event hooks           |
-| `pkg/errors.MultiError`  | `context/dbcontext.go`     | Collect multiple validation errors     |
-| `pkg/resiliency.Retry`   | `sql/provider.go`, `context/` | Retry with exponential backoff      |
-| `pkg/resiliency.CB`      | `context/dbcontext.go`     | Circuit breaker for DB calls           |
+| `core/adapters.Registry`  | `provider/registry.go`     | Multi-backend provider registry        |
+| `app/di.Container`        | `context/di.go`            | Dependency injection for DbContext     |
+| `core/tags.Parser`        | `schema/parser.go`, `dsl/` | Parse `db:"..."` struct tags           |
+| `core/safemap.ShardedMap` | `tracker/tracker.go`       | Identity Map (32 concurrent shards)    |
+| `core/hooks.Discovery`    | `context/dbcontext.go`     | Auto-discover `BeforeSave()` etc.      |
+| `core/hooks.Runner`       | `context/dbcontext.go`     | Execute pre/post event hooks           |
+| `core/errutil.MultiError` | `context/dbcontext.go`     | Collect multiple validation errors     |
+| `core/resiliency.Retry`   | `sql/provider.go`, `context/` | Retry with exponential backoff      |
+| `core/resiliency.CircuitBreaker` | `context/dbcontext.go` | Circuit breaker for DB calls       |
 
 
 ## Key Design Decisions
@@ -86,7 +86,7 @@ Traditional ORMs generate type-safe code files (`User_query.go`). We chose
 
 ### 2. Type-Erasure for Slipstream
 
-Slipstream uses `Engine[map[string]any]` — all entities are serialized
+Slipstream uses `Engine[map[string]any]` - all entities are serialized
 as JSON maps. This loses type information at storage level, but the
 `scanInto` function reconstructs typed structs via reflection.
 
@@ -108,7 +108,7 @@ for i, col := range cols {
 }
 ```
 
-This makes JOINs safe — extra columns are silently discarded instead of
+This makes JOINs safe - extra columns are silently discarded instead of
 causing a scan error.
 
 ### 4. Partial Updates Only
@@ -186,12 +186,13 @@ use cases.
 
 ```
 go-wormhole
-├── github.com/mirkobrombin/go-foundation v0.3.0    (core primitives)
-├── github.com/mirkobrombin/go-slipstream v1.0.1    (NoSQL engine)
-└── github.com/glebarez/sqlite v1.11.0              (test only)
+|-- github.com/mirkobrombin/go-foundation/v2 v2.4.0 (core and app primitives)
+|-- github.com/mirkobrombin/go-slipstream/v2 v2.0.0 (NoSQL engine)
+|   `-- github.com/mirkobrombin/go-warp/v2 v2.0.0   (storage runtime)
+`-- github.com/glebarez/sqlite v1.11.0               (test only)
 ```
 
-Go version: **1.24.4+** (requires generics + `unsafe.Pointer` arithmetic).
+Go version: **1.25.7+** (requires generics + `unsafe.Pointer` arithmetic).
 
 
 ## Test Coverage

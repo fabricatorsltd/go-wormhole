@@ -82,7 +82,7 @@ func init() {
 
 - **`Up()`** applies the migration forward
 - **`Down()`** reverses it
-- Both are auto-populated by the differ — you can edit them manually
+- Both are auto-populated by the differ - you can edit them manually
 
 
 ## The Differ Engine
@@ -112,7 +112,7 @@ When the differ detects destructive operations (`DropTableOp` or
 `DropColumnOp`), the CLI prints a yellow warning:
 
 ```
-WARNING: This migration drops column "users"."email" — potential data loss!
+WARNING: This migration drops column "users"."email" - potential data loss!
 ```
 
 
@@ -263,12 +263,12 @@ different naming standards, and the engine will "just work."
 
 | Variable          | Default   | Description                |
 |-------------------|-----------|----------------------------|
-| `WORMHOLE_DSN`    | —         | Database connection string |
+| `WORMHOLE_DSN`    | -         | Database connection string |
 | `WORMHOLE_DRIVER` | `sqlite` | SQL driver name            |
 | `WORMHOLE_DIR`    | `./migrations` | Migration files dir   |
 | `WORMHOLE_NOSQL_PROVIDER` | `mongo` | NoSQL backend for evolution |
-| `WORMHOLE_NOSQL_DSN`      | —       | NoSQL connection string (apply) |
-| `WORMHOLE_NOSQL_DB`       | —       | NoSQL database name (apply) |
+| `WORMHOLE_NOSQL_DSN`      | -       | NoSQL connection string (apply) |
+| `WORMHOLE_NOSQL_DB`       | -       | NoSQL database name (apply) |
 | `WORMHOLE_NOSQL_DIR`      | `./nosql-migrations` | NoSQL script directory |
 
 ## NoSQL Schema Evolution
