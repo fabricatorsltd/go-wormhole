@@ -7,8 +7,8 @@ import (
 
 	_ "github.com/glebarez/sqlite"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/migrations"
-	sqlprovider "github.com/fabricatorsltd/go-wormhole/pkg/sql"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/migrations"
+	sqlprovider "github.com/fabricatorsltd/go-wormhole/v2/pkg/sql"
 )
 
 func TestDataMigratorFullSyncSQLite(t *testing.T) {

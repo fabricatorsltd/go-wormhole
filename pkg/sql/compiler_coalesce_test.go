@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/query"
-	wsql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/query"
+	wsql "github.com/fabricatorsltd/go-wormhole/v2/pkg/sql"
 )
 
 func coalesce(args ...query.CoalesceArg) query.CoalesceExpr {

@@ -3,7 +3,7 @@ package dsl_test
 import (
 	"testing"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/dsl"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/dsl"
 )
 
 type coDevice struct {

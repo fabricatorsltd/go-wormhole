@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/model"
-	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
-	"github.com/fabricatorsltd/go-wormhole/pkg/query"
-	"github.com/fabricatorsltd/go-wormhole/pkg/tracker"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/provider"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/query"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/tracker"
 )
 
 const (

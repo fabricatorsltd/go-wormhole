@@ -36,9 +36,9 @@ Every tracked entity is in one of 4 states:
 
 | State       | Meaning                        | Trigger                    |
 |-------------|--------------------------------|----------------------------|
-| `Unchanged` | Clean — matches the DB         | `Attach()`, after `Save()` |
-| `Added`     | New — pending INSERT           | `Add()`                    |
-| `Modified`  | Dirty — pending partial UPDATE | Auto-detected by diff      |
+| `Unchanged` | Clean - matches the DB         | `Attach()`, after `Save()` |
+| `Added`     | New - pending INSERT           | `Add()`                    |
+| `Modified`  | Dirty - pending partial UPDATE | Auto-detected by diff      |
 | `Deleted`   | Marked for DELETE              | `Remove()`                 |
 
 State transitions:
@@ -52,7 +52,7 @@ State transitions:
 
 ## How Dirty Detection Works
 
-When an entity enters the tracker, a **snapshot** is taken — a
+When an entity enters the tracker, a **snapshot** is taken - a
 `map[string]any` of every field's current value:
 
 ```go
@@ -87,7 +87,7 @@ The resulting `[]string{"Age", "Email"}` is passed to the SQL compiler,
 which generates `UPDATE users SET "age" = ?, "email" = ? WHERE "id" = ?`.
 
 **This eliminates race conditions** where two goroutines modify different
-fields of the same row — each UPDATE touches only its own columns.
+fields of the same row - each UPDATE touches only its own columns.
 
 
 ## Partial Updates in Action
@@ -115,7 +115,7 @@ UPDATE users SET age=30, email='new@test.com', name='Alice' WHERE id=42
 
 ## Identity Map
 
-The tracker uses `go-foundation/pkg/safemap.ShardedMap` (32 shards) as
+The tracker uses `go-foundation/v2/core/safemap.ShardedMap` (32 shards) as
 an identity map. Each entity is keyed by `{tableName}#{pkValue}`:
 
 ```
@@ -124,7 +124,7 @@ users#99  →  Entry{Entity: &v, State: Modified, Snapshot: {...}}
 ```
 
 This means:
-- Loading the same PK twice returns the **same pointer** — no duplicates
+- Loading the same PK twice returns the **same pointer** - no duplicates
 - 32 shards minimize lock contention under concurrent access
 
 
@@ -148,7 +148,7 @@ func (u *User) AfterInsert() {
 ```
 
 The `DbContext` discovers these methods automatically via
-`go-foundation/pkg/hooks.Discovery` and runs them at the right time:
+`go-foundation/v2/core/hooks.Discovery` and runs them at the right time:
 
 - `Before*` hooks run **before** the transaction opens
 - If any `Before*` hook returns an error, all errors are collected in a

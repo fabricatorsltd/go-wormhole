@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	wctx "github.com/fabricatorsltd/go-wormhole/pkg/context"
-	"github.com/fabricatorsltd/go-wormhole/pkg/model"
-	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
-	"github.com/fabricatorsltd/go-wormhole/pkg/query"
+	wctx "github.com/fabricatorsltd/go-wormhole/v2/pkg/context"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/provider"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/query"
 
-	"github.com/mirkobrombin/go-foundation/pkg/resiliency"
+	"github.com/mirkobrombin/go-foundation/v2/core/resiliency"
 )
 
 // --- mock provider ---

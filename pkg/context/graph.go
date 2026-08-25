@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/model"
-	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/schema"
 )
 
 // planInsertOrder returns an ordering of indices into pending such that, for
@@ -30,8 +30,8 @@ func planInsertOrder(pending []*model.Entry) ([]int, error) {
 		}
 	}
 
-	adj := make([][]int, n)   // parent -> children
-	indeg := make([]int, n)   // number of unmet parents
+	adj := make([][]int, n) // parent -> children
+	indeg := make([]int, n) // number of unmet parents
 	addEdge := func(parent, child int) {
 		if parent == child {
 			return

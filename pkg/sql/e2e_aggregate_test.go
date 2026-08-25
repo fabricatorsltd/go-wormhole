@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/query"
-	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
-	wsql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/query"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/schema"
+	wsql "github.com/fabricatorsltd/go-wormhole/v2/pkg/sql"
 )
 
 // AgeCount is a custom result struct used for COUNT + GROUP BY queries.

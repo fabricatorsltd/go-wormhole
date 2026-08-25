@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/memdoc"
-	"github.com/fabricatorsltd/go-wormhole/pkg/query"
-	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/memdoc"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/query"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/schema"
 )
 
 // COALESCE is a SQL expression; a document store rejects it rather than dropping

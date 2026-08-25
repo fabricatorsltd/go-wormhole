@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/util"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/util"
 )
 
 func GenerateTemplate(name string) Script {

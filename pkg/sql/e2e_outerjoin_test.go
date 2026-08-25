@@ -7,9 +7,9 @@ import (
 
 	_ "github.com/glebarez/sqlite"
 
-	wctx "github.com/fabricatorsltd/go-wormhole/pkg/context"
-	"github.com/fabricatorsltd/go-wormhole/pkg/dsl"
-	wsql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
+	wctx "github.com/fabricatorsltd/go-wormhole/v2/pkg/context"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/dsl"
+	wsql "github.com/fabricatorsltd/go-wormhole/v2/pkg/sql"
 )
 
 type ojUser struct {

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"iter"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/query"
-	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/query"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/schema"
 )
 
 // Find retrieves a single entity of type T by primary key. Pass one value per

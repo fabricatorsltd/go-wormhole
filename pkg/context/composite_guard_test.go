@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	wctx "github.com/fabricatorsltd/go-wormhole/pkg/context"
+	wctx "github.com/fabricatorsltd/go-wormhole/v2/pkg/context"
 )
 
 type guardLine struct {

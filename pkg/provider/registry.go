@@ -1,7 +1,7 @@
 package provider
 
 import (
-	"github.com/mirkobrombin/go-foundation/pkg/adapters"
+	"github.com/mirkobrombin/go-foundation/v2/core/adapters"
 )
 
 // Registry is the global adapter registry for storage providers.

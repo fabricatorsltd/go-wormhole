@@ -5,7 +5,7 @@ The go-wormhole CLI provides an Entity Framework-like experience for Go develope
 ## Installation
 
 ```bash
-go install github.com/fabricatorsltd/go-wormhole/cmd/wormhole@latest
+go install github.com/fabricatorsltd/go-wormhole/v2/cmd/wormhole@latest
 ```
 
 ## 🚀 NO CGO Required

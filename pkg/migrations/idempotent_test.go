@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/migrations"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/migrations"
 )
 
 func idempotentOps() []migrations.MigrationOp {

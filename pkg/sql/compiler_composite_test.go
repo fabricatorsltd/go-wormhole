@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/model"
-	wsql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/model"
+	wsql "github.com/fabricatorsltd/go-wormhole/v2/pkg/sql"
 )
 
 func compositeMeta() *model.EntityMeta {

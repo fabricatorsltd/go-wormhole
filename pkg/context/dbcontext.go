@@ -6,14 +6,14 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/model"
-	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
-	"github.com/fabricatorsltd/go-wormhole/pkg/query"
-	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
-	"github.com/fabricatorsltd/go-wormhole/pkg/tracker"
-	"github.com/mirkobrombin/go-foundation/pkg/errutil"
-	"github.com/mirkobrombin/go-foundation/pkg/hooks"
-	"github.com/mirkobrombin/go-foundation/pkg/resiliency"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/provider"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/query"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/schema"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/tracker"
+	"github.com/mirkobrombin/go-foundation/v2/core/errutil"
+	"github.com/mirkobrombin/go-foundation/v2/core/hooks"
+	"github.com/mirkobrombin/go-foundation/v2/core/resiliency"
 )
 
 // DbContext is the Unit of Work entry point. It manages the lifecycle

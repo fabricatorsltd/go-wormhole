@@ -1,6 +1,6 @@
 package dsl
 
-import "github.com/fabricatorsltd/go-wormhole/pkg/query"
+import "github.com/fabricatorsltd/go-wormhole/v2/pkg/query"
 
 // Coalesce builds a COALESCE(arg1, arg2, ...) expression returning the first
 // non-null operand. Operands are columns (dsl.Col) or literals (dsl.Lit), in

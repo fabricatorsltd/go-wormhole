@@ -1,7 +1,7 @@
 # Resilience
 
 Databases fail. Connections drop. Deadlocks happen. `go-wormhole` integrates
-natively with `go-foundation/pkg/resiliency` to handle these scenarios
+natively with `go-foundation/v2/core/resiliency` to handle these scenarios
 gracefully instead of crashing.
 
 
@@ -13,35 +13,35 @@ transient errors (e.g. `driver: bad connection`, network timeouts):
 ```go
 import (
     "time"
-    "github.com/mirkobrombin/go-foundation/pkg/resiliency"
-    wormholesql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
+    "github.com/mirkobrombin/go-foundation/v2/core/resiliency"
+    wormholesql "github.com/fabricatorsltd/go-wormhole/v2/pkg/sql"
 )
 
 p := wormholesql.New(db,
     wormholesql.WithRetry(
-        resiliency.WithMaxAttempts(3),
-        resiliency.WithBackoff(100 * time.Millisecond),
+        resiliency.WithAttempts(3),
+        resiliency.WithDelay(100*time.Millisecond, 200*time.Millisecond),
     ),
 )
 ```
 
 This wraps `db.QueryContext` and `db.ExecContext` calls at the provider
-level. If a call fails, it retries up to 3 times with exponential backoff
-(100ms → 200ms → 400ms).
+level. If a call fails, it makes up to three attempts with exponential
+backoff (100ms, then 200ms between attempts).
 
 
 ## Read Retry (DbContext Level)
 
 For read operations (`Find`, `Execute`), the `DbContext` provides its own
-retry layer — independent from the provider's retry:
+retry layer - independent from the provider's retry:
 
 ```go
-import wh "github.com/fabricatorsltd/go-wormhole/pkg/context"
+import wh "github.com/fabricatorsltd/go-wormhole/v2/pkg/context"
 
 ctx := wh.New(provider,
     wh.WithReadRetry(
-        resiliency.WithMaxAttempts(5),
-        resiliency.WithBackoff(50 * time.Millisecond),
+        resiliency.WithAttempts(5),
+        resiliency.WithDelay(50*time.Millisecond, 400*time.Millisecond),
     ),
 )
 ```
@@ -132,15 +132,15 @@ For production use, enable all three resilience mechanisms:
 ```go
 p := wormholesql.New(db,
     wormholesql.WithRetry(
-        resiliency.WithMaxAttempts(3),
-        resiliency.WithBackoff(100 * time.Millisecond),
+        resiliency.WithAttempts(3),
+        resiliency.WithDelay(100*time.Millisecond, 200*time.Millisecond),
     ),
 )
 
 ctx := wh.New(p,
     wh.WithReadRetry(
-        resiliency.WithMaxAttempts(5),
-        resiliency.WithBackoff(50 * time.Millisecond),
+        resiliency.WithAttempts(5),
+        resiliency.WithDelay(50*time.Millisecond, 400*time.Millisecond),
     ),
     wh.WithCircuitBreaker(5, 30 * time.Second),
 )
@@ -174,14 +174,14 @@ giving up. Each with exponential backoff, so the total timeout grows
 gracefully.
 
 
-## go-foundation Integration
+## go-foundation/v2 Integration
 
-All resilience primitives come from `go-foundation`:
+All resilience primitives come from `go-foundation/v2`:
 
 | Primitive          | Package                              |
 |--------------------|--------------------------------------|
-| `Retry()`          | `github.com/mirkobrombin/go-foundation/pkg/resiliency` |
-| `CircuitBreaker`   | `github.com/mirkobrombin/go-foundation/pkg/resiliency` |
-| `MultiError`       | `github.com/mirkobrombin/go-foundation/pkg/errors`     |
+| `Retry()`          | `github.com/mirkobrombin/go-foundation/v2/core/resiliency` |
+| `CircuitBreaker`   | `github.com/mirkobrombin/go-foundation/v2/core/resiliency` |
+| `MultiError`       | `github.com/mirkobrombin/go-foundation/v2/core/errutil`    |
 
 No external dependencies. No third-party retry libraries. Pure Go.

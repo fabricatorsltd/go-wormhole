@@ -63,7 +63,7 @@ Every generated file follows this pattern:
 ```go
 package migrations
 
-import "github.com/fabricatorsltd/go-wormhole/pkg/migrations"
+import "github.com/fabricatorsltd/go-wormhole/v2/pkg/migrations"
 
 func init() {
     Register(migrations.Migration{
@@ -82,7 +82,7 @@ func init() {
 
 - **`Up()`** applies the migration forward
 - **`Down()`** reverses it
-- Both are auto-populated by the differ — you can edit them manually
+- Both are auto-populated by the differ - you can edit them manually
 
 
 ## The Differ Engine
@@ -112,7 +112,7 @@ When the differ detects destructive operations (`DropTableOp` or
 `DropColumnOp`), the CLI prints a yellow warning:
 
 ```
-WARNING: This migration drops column "users"."email" — potential data loss!
+WARNING: This migration drops column "users"."email" - potential data loss!
 ```
 
 
@@ -173,7 +173,7 @@ migrations, and inserts a record after each successful `Up()`.
 For full control, use the `Runner` directly in your Go code:
 
 ```go
-import "github.com/fabricatorsltd/go-wormhole/pkg/migrations"
+import "github.com/fabricatorsltd/go-wormhole/v2/pkg/migrations"
 
 // Register migrations (typically via init() in migration files)
 migrations.Register(migrations.Migration{
@@ -263,12 +263,12 @@ different naming standards, and the engine will "just work."
 
 | Variable          | Default   | Description                |
 |-------------------|-----------|----------------------------|
-| `WORMHOLE_DSN`    | —         | Database connection string |
+| `WORMHOLE_DSN`    | -         | Database connection string |
 | `WORMHOLE_DRIVER` | `sqlite` | SQL driver name            |
 | `WORMHOLE_DIR`    | `./migrations` | Migration files dir   |
 | `WORMHOLE_NOSQL_PROVIDER` | `mongo` | NoSQL backend for evolution |
-| `WORMHOLE_NOSQL_DSN`      | —       | NoSQL connection string (apply) |
-| `WORMHOLE_NOSQL_DB`       | —       | NoSQL database name (apply) |
+| `WORMHOLE_NOSQL_DSN`      | -       | NoSQL connection string (apply) |
+| `WORMHOLE_NOSQL_DB`       | -       | NoSQL database name (apply) |
 | `WORMHOLE_NOSQL_DIR`      | `./nosql-migrations` | NoSQL script directory |
 
 ## NoSQL Schema Evolution

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/memdoc"
-	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/memdoc"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/schema"
 )
 
 type owMoney struct {

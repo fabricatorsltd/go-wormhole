@@ -5,10 +5,10 @@ interface. Each backend translates the neutral AST into native operations.
 
 Currently four providers are built-in:
 
-- **SQL Provider** — any `database/sql`-compatible driver (PostgreSQL, SQLite, MySQL)
-- **Mongo Provider** — document NoSQL provider based on MongoDB
-- **Slipstream Provider** — embedded NoSQL using `go-slipstream` (Bitcask engine)
-- **MemDoc Provider** — deterministic in-memory document provider (tests/local)
+- **SQL Provider** - any `database/sql`-compatible driver (PostgreSQL, SQLite, MySQL)
+- **Mongo Provider** - document NoSQL provider based on MongoDB
+- **Slipstream Provider** - embedded NoSQL using `go-slipstream/v2` (Bitcask engine)
+- **MemDoc Provider** - deterministic in-memory document provider (tests/local)
 
 ## Capability Matrix
 
@@ -54,13 +54,13 @@ plus `Commit()` and `Rollback()`.
 
 ## Provider Registry
 
-Providers are registered at startup using the `go-foundation/pkg/adapters`
+Providers are registered at startup using the `go-foundation/v2/core/adapters`
 registry:
 
 ```go
 import (
-    "github.com/fabricatorsltd/go-wormhole/pkg/provider"
-    wormholesql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
+    "github.com/fabricatorsltd/go-wormhole/v2/pkg/provider"
+    wormholesql "github.com/fabricatorsltd/go-wormhole/v2/pkg/sql"
 )
 
 // Register by name
@@ -91,8 +91,8 @@ import (
     "database/sql"
     _ "github.com/glebarez/sqlite"
 
-    wormholesql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
-    "github.com/fabricatorsltd/go-wormhole/pkg/provider"
+    wormholesql "github.com/fabricatorsltd/go-wormhole/v2/pkg/sql"
+    "github.com/fabricatorsltd/go-wormhole/v2/pkg/provider"
 )
 
 db, _ := sql.Open("sqlite", "app.db")
@@ -100,8 +100,8 @@ db, _ := sql.Open("sqlite", "app.db")
 p := wormholesql.New(db,
     wormholesql.WithName("sqlite"),
     wormholesql.WithRetry(
-        resiliency.WithMaxAttempts(3),
-        resiliency.WithBackoff(100 * time.Millisecond),
+        resiliency.WithAttempts(3),
+        resiliency.WithDelay(100*time.Millisecond, 200*time.Millisecond),
     ),
 )
 provider.Register("sqlite", p)
@@ -179,8 +179,8 @@ MongoDB find options.
 import (
     "context"
 
-    "github.com/fabricatorsltd/go-wormhole/pkg/mongo"
-    "github.com/fabricatorsltd/go-wormhole/pkg/provider"
+    "github.com/fabricatorsltd/go-wormhole/v2/pkg/mongo"
+    "github.com/fabricatorsltd/go-wormhole/v2/pkg/provider"
 )
 
 p := mongo.New(nil, "app")
@@ -200,17 +200,23 @@ provider.SetDefault("mongo")
 
 ## Slipstream Provider (NoSQL)
 
-The Slipstream provider uses `go-slipstream` — a high-performance,
+The Slipstream provider uses `go-slipstream/v2`, a high-performance,
 embedded Bitcask key-value engine.
 
 ### Setup
 
 ```go
-import "github.com/fabricatorsltd/go-wormhole/pkg/slipstream"
+import (
+    "log"
 
-p, err := slipstream.New("./data",
-    engine.WithSyncWrites(true),
+    "github.com/fabricatorsltd/go-wormhole/v2/pkg/provider"
+    "github.com/fabricatorsltd/go-wormhole/v2/pkg/slipstream"
 )
+
+p, err := slipstream.New("./data")
+if err != nil {
+    log.Fatal(err)
+}
 provider.Register("slipstream", p)
 ```
 
@@ -274,8 +280,8 @@ Non-goals:
 import (
     "context"
 
-    "github.com/fabricatorsltd/go-wormhole/pkg/memdoc"
-    "github.com/fabricatorsltd/go-wormhole/pkg/provider"
+    "github.com/fabricatorsltd/go-wormhole/v2/pkg/memdoc"
+    "github.com/fabricatorsltd/go-wormhole/v2/pkg/provider"
 )
 
 p := memdoc.New()
@@ -313,11 +319,11 @@ cacheCtx := wh.New(provider.MustResolve("cache"))
 Or use the DI container:
 
 ```go
-import whctx "github.com/fabricatorsltd/go-wormhole/pkg/context"
+import whctx "github.com/fabricatorsltd/go-wormhole/v2/pkg/context"
 
 container := di.New()
 whctx.RegisterServices(container, sqlProv,
-    whctx.WithRetry(resiliency.WithMaxAttempts(3)),
+    whctx.WithRetry(resiliency.WithAttempts(3)),
     whctx.WithCircuitBreaker(5, 30*time.Second),
 )
 

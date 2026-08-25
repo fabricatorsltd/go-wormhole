@@ -11,9 +11,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/discovery"
-	"github.com/fabricatorsltd/go-wormhole/pkg/migrations"
-	"github.com/fabricatorsltd/go-wormhole/pkg/nosqlmigrations"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/discovery"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/migrations"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/nosqlmigrations"
 )
 
 // runCLIIfEnabled intercepts execution when the wormhole_cli build tag is set.

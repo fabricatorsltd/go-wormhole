@@ -3,9 +3,9 @@ package slipstream_test
 import (
 	"testing"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
-	"github.com/fabricatorsltd/go-wormhole/pkg/provider/conformance"
-	"github.com/fabricatorsltd/go-wormhole/pkg/slipstream"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/provider"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/provider/conformance"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/slipstream"
 )
 
 func TestConformance_Slipstream(t *testing.T) {

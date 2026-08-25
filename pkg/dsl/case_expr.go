@@ -1,6 +1,6 @@
 package dsl
 
-import "github.com/fabricatorsltd/go-wormhole/pkg/query"
+import "github.com/fabricatorsltd/go-wormhole/v2/pkg/query"
 
 // CaseBuilder fluently constructs a CASE WHEN … THEN … ELSE … END expression
 // usable inside ORDER BY for sort-priority patterns.
