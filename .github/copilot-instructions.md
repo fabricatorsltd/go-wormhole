@@ -16,7 +16,7 @@
 ## Key Architecture
 
 - **NO CGO POLICY**: Uses `github.com/glebarez/sqlite` (pure Go) instead of CGO-dependent sqlite drivers
-- **Global CLI Tool**: Install with `go install github.com/fabricatorsltd/go-wormhole/cmd/wormhole@latest`
+- **Global CLI Tool**: Install with `go install github.com/fabricatorsltd/go-wormhole/v2/cmd/wormhole@latest`
 - **Auto-Discovery**: CLI automatically discovers models with `db` tags in current directory
 - **DbContext:** Entry point for all operations. Manages entity tracking, change detection, and transactions
 - **EntitySet:** Fluent API for querying/manipulating entities
@@ -28,7 +28,7 @@
 
 ```bash
 # Install globally (NO CGO)
-go install github.com/fabricatorsltd/go-wormhole/cmd/wormhole@latest
+go install github.com/fabricatorsltd/go-wormhole/v2/cmd/wormhole@latest
 
 # Set environment
 export WORMHOLE_DSN="./app.db"

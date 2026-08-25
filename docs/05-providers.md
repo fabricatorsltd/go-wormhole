@@ -100,8 +100,8 @@ db, _ := sql.Open("sqlite", "app.db")
 p := wormholesql.New(db,
     wormholesql.WithName("sqlite"),
     wormholesql.WithRetry(
-        resiliency.WithMaxAttempts(3),
-        resiliency.WithBackoff(100 * time.Millisecond),
+        resiliency.WithAttempts(3),
+        resiliency.WithDelay(100*time.Millisecond, 200*time.Millisecond),
     ),
 )
 provider.Register("sqlite", p)
@@ -206,11 +206,17 @@ embedded Bitcask key-value engine.
 ### Setup
 
 ```go
-import "github.com/fabricatorsltd/go-wormhole/v2/pkg/slipstream"
+import (
+    "log"
 
-p, err := slipstream.New("./data",
-    engine.WithSyncWrites(true),
+    "github.com/fabricatorsltd/go-wormhole/v2/pkg/provider"
+    "github.com/fabricatorsltd/go-wormhole/v2/pkg/slipstream"
 )
+
+p, err := slipstream.New("./data")
+if err != nil {
+    log.Fatal(err)
+}
 provider.Register("slipstream", p)
 ```
 
@@ -317,7 +323,7 @@ import whctx "github.com/fabricatorsltd/go-wormhole/v2/pkg/context"
 
 container := di.New()
 whctx.RegisterServices(container, sqlProv,
-    whctx.WithRetry(resiliency.WithMaxAttempts(3)),
+    whctx.WithRetry(resiliency.WithAttempts(3)),
     whctx.WithCircuitBreaker(5, 30*time.Second),
 )
 

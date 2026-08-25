@@ -19,15 +19,15 @@ import (
 
 p := wormholesql.New(db,
     wormholesql.WithRetry(
-        resiliency.WithMaxAttempts(3),
-        resiliency.WithBackoff(100 * time.Millisecond),
+        resiliency.WithAttempts(3),
+        resiliency.WithDelay(100*time.Millisecond, 200*time.Millisecond),
     ),
 )
 ```
 
 This wraps `db.QueryContext` and `db.ExecContext` calls at the provider
-level. If a call fails, it retries up to 3 times with exponential backoff
-(100ms → 200ms → 400ms).
+level. If a call fails, it makes up to three attempts with exponential
+backoff (100ms, then 200ms between attempts).
 
 
 ## Read Retry (DbContext Level)
@@ -40,8 +40,8 @@ import wh "github.com/fabricatorsltd/go-wormhole/v2/pkg/context"
 
 ctx := wh.New(provider,
     wh.WithReadRetry(
-        resiliency.WithMaxAttempts(5),
-        resiliency.WithBackoff(50 * time.Millisecond),
+        resiliency.WithAttempts(5),
+        resiliency.WithDelay(50*time.Millisecond, 400*time.Millisecond),
     ),
 )
 ```
@@ -132,15 +132,15 @@ For production use, enable all three resilience mechanisms:
 ```go
 p := wormholesql.New(db,
     wormholesql.WithRetry(
-        resiliency.WithMaxAttempts(3),
-        resiliency.WithBackoff(100 * time.Millisecond),
+        resiliency.WithAttempts(3),
+        resiliency.WithDelay(100*time.Millisecond, 200*time.Millisecond),
     ),
 )
 
 ctx := wh.New(p,
     wh.WithReadRetry(
-        resiliency.WithMaxAttempts(5),
-        resiliency.WithBackoff(50 * time.Millisecond),
+        resiliency.WithAttempts(5),
+        resiliency.WithDelay(50*time.Millisecond, 400*time.Millisecond),
     ),
     wh.WithCircuitBreaker(5, 30 * time.Second),
 )

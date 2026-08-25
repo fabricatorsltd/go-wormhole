@@ -159,8 +159,9 @@ jobs:
             echo "::error::EUProvGuard summary could not be parsed"
             exit 1
           fi
-          if grep -q "OSV/EUVD query failed" "${log}"; then
-            echo "::error::vulnerability databases were unreachable"
+          if grep -q '\[WARN\]' "${log}"; then
+            echo "::error::EUProvGuard completed with degraded or incomplete evidence"
+            grep '\[WARN\]' "${log}"
             exit 1
           fi
           if [ "${recorded}" -gt 0 ] || [ "${cves}" -gt 0 ] || [ "${sast}" -gt 0 ]; then
