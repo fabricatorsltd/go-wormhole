@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/schema"
 )
 
 type ownedMoney struct {

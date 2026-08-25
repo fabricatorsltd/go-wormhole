@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/dsl"
-	"github.com/fabricatorsltd/go-wormhole/pkg/query"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/dsl"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/query"
 )
 
 type compositeUser struct {

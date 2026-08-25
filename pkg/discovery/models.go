@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/model"
 )
 
 // DiscoverModels scans the current directory and its subdirectories for Go structs

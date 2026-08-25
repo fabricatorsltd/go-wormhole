@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/query"
-	wsql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/query"
+	wsql "github.com/fabricatorsltd/go-wormhole/v2/pkg/sql"
 )
 
 // A nearest-neighbor query compiles to "<op> $N::vector" with the query vector

@@ -3,11 +3,11 @@ package provider_test
 import (
 	"testing"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/model"
-	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
-	"github.com/fabricatorsltd/go-wormhole/pkg/query"
-	"github.com/fabricatorsltd/go-wormhole/pkg/slipstream"
-	wsql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/provider"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/query"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/slipstream"
+	wsql "github.com/fabricatorsltd/go-wormhole/v2/pkg/sql"
 )
 
 func TestDetectCapabilities_SQL(t *testing.T) {

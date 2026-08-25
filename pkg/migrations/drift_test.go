@@ -8,7 +8,7 @@ import (
 
 	_ "github.com/glebarez/sqlite"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/migrations"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/migrations"
 )
 
 func driftSchema(tables ...*migrations.TableSchema) migrations.DatabaseSchema {

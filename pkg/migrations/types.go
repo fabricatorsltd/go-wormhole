@@ -3,7 +3,7 @@ package migrations
 import (
 	"reflect"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/model"
 )
 
 // ColumnRef is a column-level foreign-key reference. It renders as

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
-	"github.com/fabricatorsltd/go-wormhole/pkg/query"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/provider"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/query"
 )
 
 func subGuardQ(op query.Op, cols []string) query.Query {

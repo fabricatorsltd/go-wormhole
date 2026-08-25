@@ -3,9 +3,9 @@ package memdoc_test
 import (
 	"testing"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/memdoc"
-	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
-	"github.com/fabricatorsltd/go-wormhole/pkg/provider/conformance"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/memdoc"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/provider"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/provider/conformance"
 )
 
 func TestConformance_MemDoc(t *testing.T) {

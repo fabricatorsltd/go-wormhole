@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
-	"github.com/fabricatorsltd/go-wormhole/pkg/tracker"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/provider"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/tracker"
 )
 
 // DefaultBatchSize is the default number of records to process in a single batch.

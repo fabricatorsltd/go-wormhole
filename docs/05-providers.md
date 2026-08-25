@@ -59,8 +59,8 @@ registry:
 
 ```go
 import (
-    "github.com/fabricatorsltd/go-wormhole/pkg/provider"
-    wormholesql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
+    "github.com/fabricatorsltd/go-wormhole/v2/pkg/provider"
+    wormholesql "github.com/fabricatorsltd/go-wormhole/v2/pkg/sql"
 )
 
 // Register by name
@@ -91,8 +91,8 @@ import (
     "database/sql"
     _ "github.com/glebarez/sqlite"
 
-    wormholesql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
-    "github.com/fabricatorsltd/go-wormhole/pkg/provider"
+    wormholesql "github.com/fabricatorsltd/go-wormhole/v2/pkg/sql"
+    "github.com/fabricatorsltd/go-wormhole/v2/pkg/provider"
 )
 
 db, _ := sql.Open("sqlite", "app.db")
@@ -179,8 +179,8 @@ MongoDB find options.
 import (
     "context"
 
-    "github.com/fabricatorsltd/go-wormhole/pkg/mongo"
-    "github.com/fabricatorsltd/go-wormhole/pkg/provider"
+    "github.com/fabricatorsltd/go-wormhole/v2/pkg/mongo"
+    "github.com/fabricatorsltd/go-wormhole/v2/pkg/provider"
 )
 
 p := mongo.New(nil, "app")
@@ -206,7 +206,7 @@ embedded Bitcask key-value engine.
 ### Setup
 
 ```go
-import "github.com/fabricatorsltd/go-wormhole/pkg/slipstream"
+import "github.com/fabricatorsltd/go-wormhole/v2/pkg/slipstream"
 
 p, err := slipstream.New("./data",
     engine.WithSyncWrites(true),
@@ -274,8 +274,8 @@ Non-goals:
 import (
     "context"
 
-    "github.com/fabricatorsltd/go-wormhole/pkg/memdoc"
-    "github.com/fabricatorsltd/go-wormhole/pkg/provider"
+    "github.com/fabricatorsltd/go-wormhole/v2/pkg/memdoc"
+    "github.com/fabricatorsltd/go-wormhole/v2/pkg/provider"
 )
 
 p := memdoc.New()
@@ -313,7 +313,7 @@ cacheCtx := wh.New(provider.MustResolve("cache"))
 Or use the DI container:
 
 ```go
-import whctx "github.com/fabricatorsltd/go-wormhole/pkg/context"
+import whctx "github.com/fabricatorsltd/go-wormhole/v2/pkg/context"
 
 container := di.New()
 whctx.RegisterServices(container, sqlProv,

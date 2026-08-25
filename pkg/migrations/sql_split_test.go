@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/migrations"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/migrations"
 )
 
 func TestSplitStatements(t *testing.T) {
@@ -63,7 +63,7 @@ func TestSplitStatements(t *testing.T) {
 			},
 		},
 		{
-			name: "tagged dollar quote",
+			name:   "tagged dollar quote",
 			script: "CREATE FUNCTION g() RETURNS text AS $body$ SELECT 'a;b'; $body$ LANGUAGE sql;",
 			want:   []string{"CREATE FUNCTION g() RETURNS text AS $body$ SELECT 'a;b'; $body$ LANGUAGE sql"},
 		},

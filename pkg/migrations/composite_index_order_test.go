@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/discovery"
-	"github.com/fabricatorsltd/go-wormhole/pkg/migrations"
-	"github.com/fabricatorsltd/go-wormhole/pkg/model"
-	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/discovery"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/migrations"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/schema"
 )
 
 func dropIndexOp(ops []migrations.MigrationOp, name string) *migrations.DropIndexOp {

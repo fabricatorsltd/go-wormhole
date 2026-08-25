@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/model"
-	"github.com/fabricatorsltd/go-wormhole/pkg/query"
-	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/query"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/schema"
 )
 
 // Provider is the contract every storage backend must implement.

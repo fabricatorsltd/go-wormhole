@@ -1,6 +1,6 @@
 package dsl
 
-import "github.com/fabricatorsltd/go-wormhole/pkg/query"
+import "github.com/fabricatorsltd/go-wormhole/v2/pkg/query"
 
 // And combines two or more conditions with AND logic, returning a Composite
 // usable anywhere a query.Node is accepted (Builder.Filter, EntitySet.Where,

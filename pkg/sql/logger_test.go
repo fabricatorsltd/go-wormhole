@@ -7,9 +7,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/model"
-	"github.com/fabricatorsltd/go-wormhole/pkg/query"
-	wsql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/query"
+	wsql "github.com/fabricatorsltd/go-wormhole/v2/pkg/sql"
 	_ "github.com/glebarez/sqlite"
 )
 

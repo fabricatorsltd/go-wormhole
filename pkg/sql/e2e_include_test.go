@@ -7,22 +7,22 @@ import (
 
 	_ "github.com/glebarez/sqlite"
 
-	wctx "github.com/fabricatorsltd/go-wormhole/pkg/context"
-	"github.com/fabricatorsltd/go-wormhole/pkg/dsl"
-	wsql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
+	wctx "github.com/fabricatorsltd/go-wormhole/v2/pkg/context"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/dsl"
+	wsql "github.com/fabricatorsltd/go-wormhole/v2/pkg/sql"
 )
 
 type incUser struct {
-	ID      int          `db:"column:id;primary_key;auto_increment"`
-	Name    string       `db:"column:name"`
-	Orders  []*incOrder  `db:"fk:user_id"`  // 1:N
-	Profile *incProfile  `db:"fk:user_id"`  // 1:1 (FK on profile)
+	ID      int         `db:"column:id;primary_key;auto_increment"`
+	Name    string      `db:"column:name"`
+	Orders  []*incOrder `db:"fk:user_id"` // 1:N
+	Profile *incProfile `db:"fk:user_id"` // 1:1 (FK on profile)
 }
 
 type incOrder struct {
-	ID     int     `db:"column:id;primary_key;auto_increment"`
-	UserID int     `db:"column:user_id"`
-	Total  float64 `db:"column:total"`
+	ID     int      `db:"column:id;primary_key;auto_increment"`
+	UserID int      `db:"column:user_id"`
+	Total  float64  `db:"column:total"`
 	User   *incUser `db:"ref"` // belongs-to (FK user_id on this table)
 }
 

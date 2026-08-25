@@ -1,4 +1,4 @@
-module github.com/fabricatorsltd/go-wormhole
+module github.com/fabricatorsltd/go-wormhole/v2
 
 go 1.25.7
 

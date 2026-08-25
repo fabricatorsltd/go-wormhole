@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"sort"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/model"
 )
 
 // ValidateModels reports the first reason a set of models cannot yet be turned

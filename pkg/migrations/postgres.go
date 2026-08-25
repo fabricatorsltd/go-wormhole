@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/util"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/util"
 )
 
 // migrationLockKey is the fixed advisory-lock key used to serialize migration

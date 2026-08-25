@@ -9,7 +9,7 @@ import (
 
 	_ "github.com/glebarez/sqlite"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/model"
 )
 
 func metaWithPK(name string) *model.EntityMeta {

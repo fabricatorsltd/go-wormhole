@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/migrations"
-	"github.com/fabricatorsltd/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/migrations"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/model"
 )
 
 // ValidateModels rejects a composite-PK entity (the DDL generator would emit one

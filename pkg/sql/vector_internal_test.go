@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/query"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/query"
 )
 
 // vectorText renders both float widths in pgvector's literal form; the scanner

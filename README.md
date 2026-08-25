@@ -63,7 +63,7 @@ go run -tags wormhole_cli . migrations list
 Or install the standalone CLI:
 
 ```bash
-go install github.com/fabricatorsltd/go-wormhole/cmd/wormhole@latest
+go install github.com/fabricatorsltd/go-wormhole/v2/cmd/wormhole@latest
 wormhole migrations add CreateUser
 wormhole database update
 ```
@@ -82,6 +82,7 @@ wormhole database update
 | [08 - Relationships](docs/08-relationships.md) | 1:1, 1:N, N:M declarations, eager loading with Include |
 | [09 - Global CLI Tool](docs/09-global-cli.md) | Entity Framework-like CLI experience |
 | [10 - Concurrency & Lifetime](docs/10-concurrency.md) | DbContext per request, what to share, thread-safety |
+| [11 - Upgrading to v2](docs/11-upgrading-v2.md) | Module path and runtime dependency migration |
 
 ## Examples
 

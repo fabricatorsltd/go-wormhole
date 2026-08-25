@@ -7,12 +7,12 @@ import (
 
 	_ "github.com/glebarez/sqlite"
 
-	wctx "github.com/fabricatorsltd/go-wormhole/pkg/context"
-	"github.com/fabricatorsltd/go-wormhole/pkg/dsl"
-	"github.com/fabricatorsltd/go-wormhole/pkg/migrations"
-	"github.com/fabricatorsltd/go-wormhole/pkg/model"
-	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
-	wsql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
+	wctx "github.com/fabricatorsltd/go-wormhole/v2/pkg/context"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/dsl"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/migrations"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/schema"
+	wsql "github.com/fabricatorsltd/go-wormhole/v2/pkg/sql"
 )
 
 type gUser struct {
@@ -96,15 +96,15 @@ func TestE2E_GraphSave_FixupAndOrdering(t *testing.T) {
 }
 
 type cycA struct {
-	ID int   `db:"column:id;primary_key;auto_increment"`
-	BID int  `db:"column:b_id"`
-	B  *cycB `db:"ref"` // belongs-to B: B must insert first
+	ID  int   `db:"column:id;primary_key;auto_increment"`
+	BID int   `db:"column:b_id"`
+	B   *cycB `db:"ref"` // belongs-to B: B must insert first
 }
 
 type cycB struct {
-	ID int   `db:"column:id;primary_key;auto_increment"`
-	AID int  `db:"column:a_id"`
-	A  *cycA `db:"ref"` // belongs-to A: A must insert first
+	ID  int   `db:"column:id;primary_key;auto_increment"`
+	AID int   `db:"column:a_id"`
+	A   *cycA `db:"ref"` // belongs-to A: A must insert first
 }
 
 // Two new rows that each belong to the other cannot be ordered; SaveChanges

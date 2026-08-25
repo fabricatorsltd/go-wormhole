@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/model"
-	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/schema"
 )
 
 type fkUser struct {

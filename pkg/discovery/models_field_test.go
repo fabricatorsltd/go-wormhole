@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/migrations"
-	"github.com/fabricatorsltd/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/migrations"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/model"
 )
 
 // reproSource mirrors the model in the bug report: pointer and time.Time fields

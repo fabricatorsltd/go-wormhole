@@ -8,10 +8,10 @@ import (
 
 	_ "github.com/glebarez/sqlite"
 
-	wctx "github.com/fabricatorsltd/go-wormhole/pkg/context"
-	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
-	"github.com/fabricatorsltd/go-wormhole/pkg/schema"
-	wsql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
+	wctx "github.com/fabricatorsltd/go-wormhole/v2/pkg/context"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/provider"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/schema"
+	wsql "github.com/fabricatorsltd/go-wormhole/v2/pkg/sql"
 )
 
 type vDoc struct {

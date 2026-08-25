@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/model"
-	"github.com/fabricatorsltd/go-wormhole/pkg/util"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/util"
 	"github.com/mirkobrombin/go-foundation/v2/core/tags"
 )
 

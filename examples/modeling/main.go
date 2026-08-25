@@ -13,9 +13,9 @@ import (
 
 	_ "github.com/glebarez/sqlite"
 
-	wh "github.com/fabricatorsltd/go-wormhole/pkg/context"
-	"github.com/fabricatorsltd/go-wormhole/pkg/dsl"
-	wsql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
+	wh "github.com/fabricatorsltd/go-wormhole/v2/pkg/context"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/dsl"
+	wsql "github.com/fabricatorsltd/go-wormhole/v2/pkg/sql"
 )
 
 // OrderLine has a two-column primary key (order_id, line_no).

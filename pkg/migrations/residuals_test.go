@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/migrations"
-	"github.com/fabricatorsltd/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/migrations"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/model"
 )
 
 // Residual 1: the Postgres dialect renders portable types as native ones, so a

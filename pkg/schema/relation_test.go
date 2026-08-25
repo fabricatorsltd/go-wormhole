@@ -3,14 +3,14 @@ package schema
 import (
 	"testing"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/model"
 )
 
 type relUser struct {
 	ID      int          `db:"column:id;primary_key;auto_increment"`
 	Name    string       `db:"column:name"`
-	Orders  []*relOrder  `db:"ref"`           // 1:N, FK on order
-	Profile *relProfile  `db:"ref"`           // 1:1, FK on profile
+	Orders  []*relOrder  `db:"ref"`              // 1:N, FK on order
+	Profile *relProfile  `db:"ref"`              // 1:1, FK on profile
 	Courses []*relCourse `db:"join:enrollments"` // N:M
 }
 
@@ -83,7 +83,7 @@ func TestParse_Relations(t *testing.T) {
 }
 
 type jsonNavEntity struct {
-	ID    int       `db:"column:id;primary_key;auto_increment"`
+	ID    int        `db:"column:id;primary_key;auto_increment"`
 	Leafs []*relLeaf `db:"column:leafs;json"` // JSON column, NOT a relation
 	Owner *relLeaf   `db:"column:owner;json"` // JSON column, NOT a relation
 }

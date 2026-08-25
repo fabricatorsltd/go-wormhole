@@ -10,8 +10,8 @@ import (
 
 	_ "github.com/glebarez/sqlite"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/migrations"
-	"github.com/fabricatorsltd/go-wormhole/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/migrations"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/model"
 )
 
 // Every op kind must survive a JSON round-trip. If a new op type is added but

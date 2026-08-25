@@ -12,10 +12,10 @@ import (
 
 	_ "github.com/glebarez/sqlite"
 
-	wh "github.com/fabricatorsltd/go-wormhole/pkg/context"
-	"github.com/fabricatorsltd/go-wormhole/pkg/dsl"
-	"github.com/fabricatorsltd/go-wormhole/pkg/query"
-	wsql "github.com/fabricatorsltd/go-wormhole/pkg/sql"
+	wh "github.com/fabricatorsltd/go-wormhole/v2/pkg/context"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/dsl"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/query"
+	wsql "github.com/fabricatorsltd/go-wormhole/v2/pkg/sql"
 )
 
 // User is the whole schema: the struct tags map fields to columns.

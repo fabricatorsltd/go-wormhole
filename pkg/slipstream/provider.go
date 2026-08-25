@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/fabricatorsltd/go-wormhole/pkg/model"
-	"github.com/fabricatorsltd/go-wormhole/pkg/provider"
-	"github.com/fabricatorsltd/go-wormhole/pkg/query"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/model"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/provider"
+	"github.com/fabricatorsltd/go-wormhole/v2/pkg/query"
 	"github.com/mirkobrombin/go-slipstream/v2/pkg/engine"
 	"github.com/mirkobrombin/go-slipstream/v2/pkg/tx"
 	"github.com/mirkobrombin/go-slipstream/v2/pkg/wal"
