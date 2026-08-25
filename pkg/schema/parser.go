@@ -24,6 +24,7 @@ var (
 
 func init() {
 	parser = tags.NewParser(tagName,
+		tags.WithIncludeUntagged(),
 		tags.WithPairDelimiter(";"),
 		tags.WithKVSeparator(":"),
 		tags.WithValueDelimiter(","),
@@ -66,6 +67,9 @@ func ParseType(t reflect.Type) *model.EntityMeta {
 	var tableOverride, discColumn, discValue string
 
 	for _, fm := range parsed {
+		if !fm.IsExported {
+			continue
+		}
 		sf, _ := t.FieldByName(fm.Name)
 		// A `json`-tagged field is stored as a JSON column, even when its Go
 		// type is a pointer/slice-of-pointer to a struct. The json directive
@@ -247,6 +251,9 @@ func flattenOwned(owner reflect.StructField, prefix string) []model.FieldMeta {
 	sub := parser.ParseType(owner.Type)
 	out := make([]model.FieldMeta, 0, len(sub))
 	for _, sfm := range sub {
+		if !sfm.IsExported {
+			continue
+		}
 		ssf, ok := owner.Type.FieldByName(sfm.Name)
 		if !ok {
 			continue
